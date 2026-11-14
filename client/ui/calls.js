@@ -68,6 +68,50 @@ function tryRecoverCall(c){
   c.lastRestart=Date.now();signalCall('restart',{});
  }
 }
+function prepareCallAudioFromGesture(){
+ // Safari may require a user gesture to unlock remote audio playback.
+ try{
+  const Context=window.AudioContext||window.webkitAudioContext;
+  if(Context){
+   if(!callAudioContext)callAudioContext=new Context();
+   callAudioContext.resume()?.catch?.(()=>{});
+  }
+ }catch{}
+ const audio=$call('remoteAudio');
+ audio.autoplay=true;audio.muted=false;
+ audio.setAttribute?.('playsinline','');
+}
+function playIncomingCallAudio(c){
+ if(currentCall!==c||!c.remoteStream?.getAudioTracks().length)return;
+ const audio=$call('remoteAudio');
+ if(audio.srcObject!==c.remoteStream)audio.srcObject=c.remoteStream;
+ audio.muted=false;
+ audio.volume=Number($call('callVolume').value)/100;
+ const p=audio.play();
+ p?.then?.(()=>{
+  if(currentCall===c){
+   c.audioPlaybackBlocked=false;
+   $call('enableCallAudio').textContent='🔊 Звук включён';
+  }
+ })?.catch?.(()=>{
+  if(currentCall!==c)return;
+  c.audioPlaybackBlocked=true;
+  $call('enableCallAudio').textContent='🔊 Нажмите для включения звука';
+  $call('callQuality').textContent='Телефон заблокировал звук. Нажмите «Включить звук».';
+  $call('callQuality').classList.add('warning');
+ });
+}
+function startCallWatchdog(c){
+ if(c.connectWatchdog)clearTimeout(c.connectWatchdog);
+ c.connectWatchdog=setTimeout(()=>{
+  if(currentCall!==c||!c.pc)return;
+  if(['connected','completed'].includes(c.pc.iceConnectionState)||c.pc.connectionState==='connected')return;
+  $call('callStatus').textContent='Проверяем соединение с мобильной сетью…';
+  $call('callQuality').textContent='Звонок подключается дольше обычного. Проверяем TURN/STUN…';
+  $call('callQuality').classList.add('warning');
+  tryRecoverCall(c);
+ },16000);
+}
 function callTone(freq){
  if(!state.sound)return;
  try{
@@ -150,13 +194,18 @@ function callLayout(){
 }
 async function getLocalCallMedia(mode){
  if(!navigator.mediaDevices?.getUserMedia)throw Error('Микрофон/камера недоступны. Нужен HTTPS и разрешение пользователя.');
- return navigator.mediaDevices.getUserMedia({audio:callAudioConstraints(),video:mode==='video'?
-  {width:{ideal:1280},height:{ideal:720},frameRate:{ideal:24,max:30}}:false});
+ const video=mode==='video'?{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:24,max:30}}:false;
+ try{return await navigator.mediaDevices.getUserMedia({audio:callAudioConstraints(),video})}
+ catch(e){
+  if(mode!=='audio'||!['OverconstrainedError','NotFoundError','TypeError','NotReadableError'].includes(e.name))throw e;
+  return navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true},video:false});
+ }
 }
 async function beginCall(mode){
  if(currentCall)return toast('У вас уже есть активный звонок');
  const c=state.active;if(!c||c.is_group||c.is_saved||!c.peer_id)return toast('Звонить можно только другу из личного чата');
  if(!state.ws||state.ws.readyState!==WebSocket.OPEN)return toast('Онлайн-канал ещё не подключён');
+ prepareCallAudioFromGesture();
  let stream;try{stream=await getLocalCallMedia(mode)}catch(e){return toast('Не удалось получить доступ к устройствам: '+e.message)}
  currentCall={id:crypto.randomUUID(),peer:c.peer_id,nick:c.name,mode,incoming:false,isCaller:true,stream,
   pc:null,ice:[],started:0,screen:null,remoteStream:null,restarts:0};
@@ -170,7 +219,8 @@ async function beginCall(mode){
 }
 function createPeer(){
  const c=currentCall;if(!c)return null;
- const pc=new RTCPeerConnection({iceServers:c.iceServers||MPOL_FALLBACK_ICE,iceCandidatePoolSize:0});
+ const pc=new RTCPeerConnection({iceServers:c.iceServers||MPOL_FALLBACK_ICE,
+  iceCandidatePoolSize:0,iceTransportPolicy:'all'});
  c.pc=pc;
  c.remoteStream=new MediaStream();
  for(const t of c.stream.getTracks()){
@@ -206,10 +256,7 @@ function createPeer(){
   // Never play local capture in a speaker; the remote stream is the sole
   // audio playback path and camera preview must always remain muted.
   $call('localVideo').muted=true;
-  if(audio.srcObject!==c.remoteStream)audio.srcObject=c.remoteStream;
-  audio.volume=Number($call('callVolume').value)/100;
-  audio.muted=false;
-  audio.play().catch(()=>{$call('callQuality').textContent='Нажмите «Включить звук» для воспроизведения';});
+  if(e.track.kind==='audio')playIncomingCallAudio(c);
   if(c.mode==='video'){
    if(video.srcObject!==c.remoteStream)video.srcObject=c.remoteStream;
    // Video is silent: the audio element is the only playback path.
@@ -218,12 +265,17 @@ function createPeer(){
   }
   if(e.track.kind==='audio'){
    e.track.onmute=()=>{if(currentCall===c)$call('callQuality').textContent='Входящий микрофон временно недоступен'};
-   e.track.onunmute=()=>{if(currentCall===c)$call('callQuality').textContent='Входящий звук восстановлен'};
+   e.track.onunmute=()=>{if(currentCall===c){
+    $call('callQuality').textContent='Входящий звук восстановлен';
+    playIncomingCallAudio(c);
+   }};
   }
  };
  pc.onconnectionstatechange=()=>{
   if(currentCall!==c)return;
   if(pc.connectionState==='connected'){
+   if(c.connectWatchdog){clearTimeout(c.connectWatchdog);c.connectWatchdog=null}
+   playIncomingCallAudio(c);
    if(!c.started){c.started=Date.now();stopCallRingtone();$call('callStatus').textContent='Соединено';callTick=setInterval(updateCallDuration,1000);monitorCallQuality()}
   }else if(pc.connectionState==='disconnected'){
    $call('callStatus').textContent='Восстанавливаем соединение…';
