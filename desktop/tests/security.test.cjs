@@ -2,7 +2,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {
- SERVER_ORIGIN,GITHUB_REPO,isMpolUrl,canOpenExternal,safeFilename,
+ SERVER_ORIGIN,GITHUB_REPO,normalizeServerOrigin,isMpolUrl,canOpenExternal,safeFilename,
  normalizeMediaTypes,mediaKey
 }=require('../lib/security.cjs');
 
@@ -44,4 +44,34 @@ test('only audio and video permission kinds can be requested',()=>{
  assert.deepEqual(normalizeMediaTypes(['audio','video','audio','other']),['audio','video']);
  assert.equal(mediaKey(['video','audio']),'audio+video');
  assert.deepEqual(normalizeMediaTypes(['serial','unknown']),[]);
+});
+
+test('Server selection only accepts deliberate external HTTPS origin, no token leaks',()=>{
+ for(const url of [
+  'https://mpol.example.ru','https://mpol.example.ru/','https://demo.dada-tuda.ru'
+ ]){
+  const origin=normalizeServerOrigin(url);
+  assert.ok(origin && origin.startsWith('https://'),url);
+  assert.equal(isMpolUrl(origin+'/api/health',origin),true);
+  assert.equal(isMpolUrl(SERVER_ORIGIN+'/api/me',origin),false);
+ }
+ for(const url of [
+  'http://mpol.example.ru','https://mpol.example.ru.attacker.test/path',
+  'https://example.ru/foo','https://example.ru?token=secret',
+  'https://u:pass@example.ru','https://127.0.0.1','https://localhost',
+  'https://192.168.0.1','file:///etc/passwd','javascript:alert(1)',
+  'https://intranet.local','https://example.ru:8443',
+  'https://example.ru/#hash','https://example.ru.','https://::1'
+ ])assert.equal(normalizeServerOrigin(url),null,'Invalid server origin must be rejected: '+url);
+});
+test('Russian PaaS Docker image includes the phone website and persisted backend',()=>{
+ const fs=require('node:fs');
+ const file=require('node:path').resolve(__dirname,'../../Dockerfile');
+ const docker=fs.readFileSync(file,'utf8');
+ assert.match(docker,/COPY client\/ui \/app\/client\/ui/);
+ assert.match(docker,/MPOL_REQUIRE_PERSISTENT_DB=1/);
+ assert.match(docker,/\$\{PORT:-8000\}/);
+ const desktop=require('node:fs').readFileSync(require('node:path').resolve(__dirname,'../main.cjs'),'utf8');
+ assert.match(desktop,/isSettingsPage\(event\.senderFrame/);
+ assert.match(desktop,/Ctrl|input\.control/);
 });
