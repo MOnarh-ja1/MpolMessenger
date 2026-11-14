@@ -264,7 +264,7 @@ def members_of(d: Session, cid: str):
 @app.get('/api/health')
 def health():
     is_temp = SQLITE and os.getenv('MPOL_EPHEMERAL_STORAGE') == '1'
-    return {'ok':True,'version':'2.1.0','temporary_storage':is_temp,'durable_database':not SQLITE}
+    return {'ok':True,'version':'2.2.0','temporary_storage':is_temp,'durable_database':not SQLITE}
 
 @app.post('/api/auth/register')
 def register(body: Register, request: Request, d:Session=Depends(db)):
@@ -307,8 +307,11 @@ def windows_update():
     # A checksum is mandatory for EXE auto-update, populated after release.
     digest=os.getenv('MPOL_WINDOWS_EXE_SHA256','').strip().lower()
     if digest and not re.fullmatch(r'[0-9a-f]{64}',digest):digest=''
-    return {'version':'2.1.0','required':True,
-      'download_url':'https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.1.0/MpolMessenger.exe',
+    # Do not advertise an unreleased EXE with the previous build's checksum.
+    release='v2.2.0' if os.getenv('MPOL_WINDOWS_RELEASE_TAG')=='v2.2.0' else 'v2.1.0'
+    version=release[1:]
+    return {'version':version,'required':True,
+      'download_url':'https://github.com/MOnarh-ja1/MpolMessenger/releases/download/'+release+'/MpolMessenger.exe',
       'sha256':digest}
 
 @app.get('/api/developer/status')
