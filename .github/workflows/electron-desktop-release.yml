@@ -76,7 +76,7 @@ jobs:
       - name: Upload EXE as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MPOL-Messenger-Electron-2.7.0-x64
+          name: MPOL-Messenger-Electron-2.8.0-x64
           path: desktop/dist/MpolMessenger.exe
           if-no-files-found: error
 
@@ -85,10 +85,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v2.7.0-desktop"
+          $tag = "v2.8.0-desktop"
           $asset = "desktop/dist/MpolMessenger.exe"
-          $title = "MPOL Messenger Desktop 2.7.0 — Separate Windows App (Electron)"
-          $notes = "Real standalone Windows x64 EXE: Electron 45.3.2 bundles its own Chromium; no Microsoft Edge application window. Uses the current MPOL online server and existing Neon accounts/chats. Includes in-app GitHub release check and EXE download; original four icons loaded from hosted MPOL UI. Includes native media permission dialogs, Windows notifications, F11 and safe file downloads. Unsigned prerelease; Windows SmartScreen may warn. Best-effort free Metered Open Relay TURN fallback via public static-auth credentials if no private TURN configured; not a guaranteed service. HD 720p camera targets with 2Mbps adaptive video cap, audio echo/noise suppression on by default. Messaging remains online. Privacy and network quality depend on external provider and ISP. You may configure a dedicated TURN or disable the public fallback."
+          $title = "MPOL Messenger Desktop 2.8.0 — Separate Windows App (Electron)"
+          $notes = "Real standalone Windows x64 EXE: Electron 45.3.2 bundles its own Chromium; no Microsoft Edge application window. Uses the current MPOL online server and existing Neon accounts/chats. Includes in-app GitHub release check and EXE download; original four icons loaded from hosted MPOL UI. Includes native media permission dialogs, Windows notifications, F11 and safe file downloads. Unsigned prerelease; Windows SmartScreen may warn. MPOL 2.8.0: web/PWA visitors can stay signed in when reopening the browser. App session is validated on server and preserved during temporary offline/API errors. Separate EXE windows retain isolated sessionStorage, so accounts are not silently shared; logout revokes login. Existing call and video improvements remain."
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $asset --clobber --repo $env:GITHUB_REPOSITORY
