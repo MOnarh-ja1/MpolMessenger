@@ -531,8 +531,8 @@ async def upload_profile_photo(file:UploadFile=File(...),u:User=Depends(authed),
     limit('avatar:'+u.id,12,3600)
     content=await file.read(800_001)
     mime=(file.content_type or '').lower()
-    allowed={'image/png':content.startswith(b'\\x89PNG\\r\\n\\x1a\\n'),
-             'image/jpeg':content.startswith(b'\\xff\\xd8\\xff'),
+    allowed={'image/png':content.startswith(b'\x89PNG\r\n\x1a\n'),
+             'image/jpeg':content.startswith(b'\xff\xd8\xff'),
              'image/webp':content.startswith(b'RIFF') and content[8:12]==b'WEBP'}
     if mime not in allowed or not allowed[mime] or not content or len(content)>800_000:
         raise HTTPException(415,'Используйте PNG/JPG/WEBP не более 800 КБ')
@@ -635,7 +635,7 @@ async def read_chat(chat_id:str,u:User=Depends(authed),d:Session=Depends(db)):
 ALLOWED={'.webm':'audio/webm','.ogg':'audio/ogg','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp',
          '.pdf':'application/pdf','.txt':'text/plain','.csv':'text/csv','.zip':'application/zip'}
 def valid_magic(ext:str,data:bytes)->bool:
-    if ext=='.webm':return data.startswith(b'\\x1a\\x45\\xdf\\xa3')
+    if ext=='.webm':return data.startswith(b'\x1a\x45\xdf\xa3')
     if ext=='.ogg':return data.startswith(b'OggS')
     if ext=='.png':return data.startswith(b'\x89PNG\r\n\x1a\n')
     if ext in ('.jpg','.jpeg'):return data.startswith(b'\xff\xd8\xff')
