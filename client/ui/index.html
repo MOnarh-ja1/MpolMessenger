@@ -12,8 +12,15 @@
       <label>Логин<input id="login" required minlength="3" maxlength="32" placeholder="Ваш логин" autocomplete="username"></label>
       <label>Пароль<input id="password" type="password" required minlength="10" placeholder="Не менее 10 символов" autocomplete="current-password"></label>
       <div id="confirmFields" class="hidden"><label>Повторите пароль<input id="password2" type="password" placeholder="Подтвердите пароль" autocomplete="new-password"></label><label>Email (необязательно)<input id="email" type="email" placeholder="name@example.com" autocomplete="email"></label></div>
+      <label id="rememberLoginRow" class="remember-login-row"><input type="checkbox" id="rememberLogin" checked/><span>Оставаться в аккаунте на этом устройстве</span></label>
       <p id="authError" class="error"></p><button id="authSubmit" class="button primary" type="submit">Войти <span>→</span></button>
-    </form><button id="forgotPassword" class="text-button">Забыли пароль?</button><button id="toggleAuth" class="text-button">Нет аккаунта? <b>Создать аккаунт</b></button>
+    </form>
+    <div id="sessionRestore" class="session-restore hidden" role="status" aria-live="polite">
+      <p id="sessionRestoreMessage">Восстанавливаем вход в аккаунт…</p>
+      <button id="retrySession" type="button" class="button primary">Повторить подключение <span>↻</span></button>
+      <button id="switchAccount" type="button" class="text-button">Войти в другой аккаунт</button>
+    </div>
+    <button id="forgotPassword" class="text-button">Забыли пароль?</button><button id="toggleAuth" class="text-button">Нет аккаунта? <b>Создать аккаунт</b></button>
     <div class="server-note"><span class="live-dot"></span><span id="serverStatus">Проверка сервера…</span><button id="configureServer" class="hidden">Настроить</button></div>
   </div><div class="auth-footer">MPOL MESSENGER <span>© 2026</span></div>
 </section>
