@@ -267,30 +267,54 @@ def health():
     is_temp = SQLITE and os.getenv('MPOL_EPHEMERAL_STORAGE') == '1'
     return {'ok':True,'version':'2.2.0','temporary_storage':is_temp,'durable_database':not SQLITE}
 
-# Authenticated, short-lived TURN credentials (coturn REST auth).
-# No credentials or secrets are stored in GitHub; configure them in the host environment.
+# WebRTC ICE: prefer a configured private TURN relay, otherwise use the
+# publicly documented Metered Open Relay static-auth service (best effort).
+# The free public relay has quota/availability limits; NEVER report it as proven
+# reachable simply because credentials could be generated.
+# Official info: https://www.metered.ca/tools/openrelay/
 @app.get('/api/calls/ice')
 def ice_configuration(u: User = Depends(authed)):
     limit('call-ice:' + u.id, 30, 60)
-    servers = [{'urls': ['stun:stun.l.google.com:19302']}]
+    servers = [{'urls': ['stun:stun.cloudflare.com:3478',
+                         'stun:stun.l.google.com:19302']}]
     urls = [v.strip() for v in os.getenv('MPOL_TURN_URLS', '').split(',') if v.strip()]
-    urls = [v for v in urls if re.fullmatch(r'turns?:[^\s]{3,240}', v)][:6]
+    urls = [v for v in urls if re.fullmatch(r'turns?:[^\\s]{3,240}', v)][:6]
     relay = False
+    provider = 'stun-only'
     ttl = 0
     secret = os.getenv('MPOL_TURN_SECRET', '').strip()
+    static_username = os.getenv('MPOL_TURN_USERNAME', '').strip()
+    static_password = os.getenv('MPOL_TURN_PASSWORD', '').strip()
     if urls and secret:
-        ttl = min(86400, max(600, int(os.getenv('MPOL_TURN_TTL', '3600'))))
+        provider = 'custom-turn'
+    elif urls and static_username and static_password:
+        provider = 'custom-turn'
+    elif os.getenv('MPOL_DISABLE_PUBLIC_TURN', '0') != '1':
+        # Documented, public shared TURN REST auth credential; NOT private data.
+        # No Metered account or VPS is needed, but public relays can reach their
+        # shared 20GB/month quota, be unavailable, or change provider policy.
+        urls = ['turn:staticauth.openrelay.metered.ca:80?transport=udp',
+                'turn:staticauth.openrelay.metered.ca:443?transport=tcp',
+                'turns:staticauth.openrelay.metered.ca:443?transport=tcp']
+        secret = 'openrelayprojectsecret'
+        provider = 'metered-openrelay-public'
+    if urls and secret:
+        try:
+            ttl = min(86400, max(600, int(os.getenv('MPOL_TURN_TTL', '3600'))))
+        except (TypeError, ValueError):
+            ttl = 3600
         username = str(int(time.time()) + ttl) + ':' + u.id
         credential = base64.b64encode(hmac.new(
             secret.encode('utf-8'), username.encode('utf-8'), hashlib.sha1
         ).digest()).decode('ascii')
         servers.append({'urls': urls, 'username': username, 'credential': credential})
         relay = True
-    elif urls and os.getenv('MPOL_TURN_USERNAME') and os.getenv('MPOL_TURN_PASSWORD'):
-        servers.append({'urls': urls, 'username': os.environ['MPOL_TURN_USERNAME'],
-                        'credential': os.environ['MPOL_TURN_PASSWORD']})
+    elif urls and static_username and static_password:
+        servers.append({'urls': urls, 'username': static_username,
+                        'credential': static_password})
         relay = True
-    return {'iceServers': servers, 'relayConfigured': relay, 'ttlSeconds': ttl}
+    return {'iceServers': servers, 'relayConfigured': relay, 'relayProvider': provider,
+            'relayVerified': False, 'ttlSeconds': ttl}
 
 
 @app.post('/api/auth/register')
