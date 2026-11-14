@@ -317,9 +317,9 @@ async function checkRequiredExeUpdate(){
  let manifest;
  try{manifest=await api('/windows-update')}catch{return}
  const latest=String(manifest?.version||'');
- if(!/^\\d+\\.\\d+\\.\\d+$/.test(latest))return;
+ if(!/^\d+\.\d+\.\d+$/.test(latest))return;
  const parts=x=>x.split('.').map(v=>Number(v));
- const old=version&&/^\\d+\\.\\d+\\.\\d+$/.test(version)?parts(version):[0,0,0];
+ const old=version&&/^\d+\.\d+\.\d+$/.test(version)?parts(version):[0,0,0];
  const now=parts(latest);
  const outdated=old.some((v,i)=>v!==now[i]&&old.slice(0,i).every((prev,j)=>prev===now[j])&&v<now[i]);
  if(!outdated)return;
