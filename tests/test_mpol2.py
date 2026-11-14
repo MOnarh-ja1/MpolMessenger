@@ -61,14 +61,14 @@ def run():
             assert client.put('/api/chats/'+chat_id+'/archive',headers=ah,json={'archived':False}).status_code==200
             assert next(x for x in client.get('/api/chats',headers=ah).json() if x['id']==chat_id)['archived'] is False
 
-            photo=b'\\x89PNG\\r\\n\\x1a\\n'+b'mpol-avatar-sample'
+            photo=b'\x89PNG\\r\\n\x1a\\n'+b'mpol-avatar-sample'
             p=client.post('/api/me/photo',headers=ah,files={'file':('profile.png',photo,'image/png')})
             assert p.status_code==200,p.text
             assert p.json()['avatar']=='📷'
             assert client.get('/api/avatars/'+a).content==photo
             assert client.post('/api/me/photo',headers=ah,files={'file':('bad.png',b'abc','image/png')}).status_code==415
 
-            voice=b'\\x1a\\x45\\xdf\\xa3'+b'voice-test-not-a-real-audio'
+            voice=b'\x1a\x45\xdf\xa3'+b'voice-test-not-a-real-audio'
             upload=client.post('/api/chats/'+chat_id+'/attachments',headers=ah,
                 files={'file':('voice-sample.webm',voice,'audio/webm')})
             assert upload.status_code==200,upload.text
