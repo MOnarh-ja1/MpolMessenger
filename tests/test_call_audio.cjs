@@ -33,7 +33,8 @@ class FakePC{
 }
 const localStorage={getItem:()=>null,setItem(){}};
 const ctx=vm.createContext({
- document:{getElementById:element,querySelector:()=>({classList:element('controls').classList})},
+ document:{getElementById:element,querySelector:()=>({classList:element('controls').classList}),
+    addEventListener(){}},
  state:{sound:false},localStorage,window:{},navigator:{},toast(){},
  RTCPeerConnection:FakePC,MediaStream:FakeMediaStream,
  setInterval(){return 1},clearInterval(){},setTimeout(){return 1},clearTimeout(){},
@@ -63,10 +64,29 @@ assert.equal(audio.srcAssignments,1,'Adding video must NOT reset remote audio el
 assert.equal(audio.srcObject.getTracks().length,2);
 assert.equal(video.srcAssignments,1);
 assert.equal(video.muted,true,'Only the audio element may output sound, no duplicated video audio');
+assert.equal(typeof pc.oniceconnectionstatechange,'function',
+ 'Mobile WebRTC must recover when ICE changes without connectionState event');
+pc.iceConnectionState='connected';
+pc.oniceconnectionstatechange();
+assert.equal(element('callStatus').textContent,'Соединено');
+assert.equal(element('remoteAudio').muted,false,'Remote audio must be audible');
 pc.ontrack({track:{id:'in-video',kind:'video'},streams:[]});
 assert.equal(audio.srcAssignments,1);
 assert.equal(video.srcAssignments,1);
-console.log('PASS: call audio remains single-output, echo cancel/denoise on, HD bitrate and 30 FPS cap');
+console.log('PASS: call audio remains single-output, mobile ICE connection recovery and HD bitrate');
+
+(async()=>{
+ let first=true;let tried=0;
+ ctx.navigator.mediaDevices={getUserMedia:async constraints=>{
+   tried++;
+   if(first){first=false;const e=new Error('unsupported constraints');e.name='OverconstrainedError';throw e}
+   return {audioConstraints:constraints.audio};
+ }};
+ const fallback=await vm.runInContext("getLocalCallMedia('audio')",ctx);
+ assert.equal(tried,2,'Audio-only calls should retry without optional mobile sample constraints');
+ assert.equal(fallback.audioConstraints.echoCancellation,true);
+ console.log('PASS: incompatible phone microphone constraints fall back safely');
+})().catch(e=>{console.error(e);process.exitCode=1});
 
 (async()=>{
  // Browser requests short-lived ICE credentials from the API before negotiating.
