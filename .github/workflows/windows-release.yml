@@ -35,6 +35,8 @@ jobs:
       - name: Validate JavaScript syntax
         shell: pwsh
         run: node --check client/ui/app.js
+          node --check client/ui/voice.js
+          node --check client/ui/calls.js
 
       - name: Set up Python for server tests
         uses: actions/setup-python@v5
