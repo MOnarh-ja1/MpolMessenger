@@ -293,7 +293,7 @@ def members_of(d: Session, cid: str):
 @app.get('/api/health')
 def health():
     is_temp = SQLITE and os.getenv('MPOL_EPHEMERAL_STORAGE') == '1'
-    return {'ok':True,'version':'2.2.0','temporary_storage':is_temp,'durable_database':not SQLITE}
+    return {'ok':True,'service':'mpol-messenger','version':'3.1.0','temporary_storage':is_temp,'durable_database':not SQLITE}
 
 # WebRTC ICE: prefer a configured private TURN relay, otherwise use the
 # publicly documented Metered Open Relay static-auth service (best effort).
