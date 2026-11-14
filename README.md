@@ -1,12 +1,12 @@
-> 🟢 **MPOL Messenger 0.2.0 Online Beta:** [открыть веб-версию](https://mpol-messenger-api.onrender.com) · [скачать Windows EXE](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v0.2.0-beta/MpolMessenger.exe) · [скачать архив с сервером](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v0.2.0-beta/MpolMessenger_Full_Project.zip).
+> 🟢 **MPOL Messenger 2.0 Preview опубликован:** [скачать EXE для Windows](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.0.0-preview/MpolMessenger.exe) · [полный ZIP](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.0.0-preview/MpolMessenger_Full_Project.zip) · [открыть веб-версию](https://mpol-messenger-api.onrender.com).
 >
 > ✅ Аккаунты, чаты и файлы теперь сохраняются в **отдельной базе PostgreSQL в Neon**; сервер приложения размещён на Render и может перезапускаться без удаления этих данных.
 >
 > ⚠️ Бета-версия: бесплатный Render может переходить в сон, восстановление пароля по email не настроено, нет сквозного шифрования или гарантированной доступности 24/7. Не используйте пароль от других аккаунтов и не храните чувствительную информацию.
 
-# MPOL MESSENGER · 0.2.0 Online Beta
+# MPOL MESSENGER · 2.0 Preview
 
-Windows-клиент с минималистичной чёрной темой MPOL DARK и настоящим сервером онлайн-общения.
+Windows-клиент с чёрной темой MPOL BLACK и настоящим сервером. В preview добавлены голосовые сообщения, реакции, фотографии профиля, Избранное, архив и предварительные звонки WebRTC. Полный список реализованного и ограничений: [RELEASE_2_0_STATUS.md](RELEASE_2_0_STATUS.md).
 
 ## Что находится в архиве
 
