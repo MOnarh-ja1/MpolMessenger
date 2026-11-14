@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 def run():
-    with tempfile.TemporaryDirectory() as directory:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
         root=Path(directory)
         os.environ['MPOL_DATABASE_URL']='sqlite:///'+str(root/'mpol2.db')
         os.environ['MPOL_UPLOAD_DIR']=str(root/'uploads')
@@ -61,7 +61,7 @@ def run():
             assert client.put('/api/chats/'+chat_id+'/archive',headers=ah,json={'archived':False}).status_code==200
             assert next(x for x in client.get('/api/chats',headers=ah).json() if x['id']==chat_id)['archived'] is False
 
-            photo=b'\x89PNG\\r\\n\x1a\\n'+b'mpol-avatar-sample'
+            photo=b'\x89PNG\r\n\x1a\n'+b'mpol-avatar-sample'
             p=client.post('/api/me/photo',headers=ah,files={'file':('profile.png',photo,'image/png')})
             assert p.status_code==200,p.text
             assert p.json()['avatar']=='📷'
