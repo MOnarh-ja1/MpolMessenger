@@ -58,6 +58,15 @@ def run():
             posted=client.post('/api/chats/'+chat_id+'/messages',headers=ah,json={'body':'Привет, MPOL 2!'})
             assert posted.status_code==200,posted.text
             msg_id=posted.json()['id']
+            assert posted.json()['user_id']==a, 'Sender is determined by bearer token, not UI profile'
+            bob_view=client.get('/api/chats/'+chat_id+'/messages',headers=bh).json()
+            assert any(m['id']==msg_id and m['user_id']==a for m in bob_view)
+            bob_sent=client.post('/api/chats/'+chat_id+'/messages',headers=bh,json={'body':'От Боба'})
+            assert bob_sent.status_code==200,bob_sent.text
+            assert bob_sent.json()['user_id']==b
+            alice_view=client.get('/api/chats/'+chat_id+'/messages',headers=ah).json()
+            assert any(m['id']==bob_sent.json()['id'] and m['user_id']==b for m in alice_view)
+            assert client.delete('/api/messages/'+bob_sent.json()['id'],headers=ah).status_code==403
             reaction=client.put('/api/messages/'+msg_id+'/reaction',headers=bh,json={'emoji':'🔥'})
             assert reaction.status_code==200,reaction.text
             assert reaction.json()['reactions'][0]['count']==1
@@ -123,6 +132,9 @@ def run():
                         'call_id':callid})
                     reply=origin.receive_json()
                     assert reply['type']=='call_signal' and reply['kind']=='decline'
+                    recipient.send_json({'type':'call_signal','to':a,'kind':'restart','call_id':callid})
+                    restart_event=origin.receive_json()
+                    assert restart_event['type']=='call_signal' and restart_event['kind']=='restart'
             print('PASS: developer RBAC, physical deletion, saved, archive, reactions, avatars, audio, two-user WebRTC signaling')
         engine.dispose()
 
