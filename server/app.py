@@ -310,7 +310,7 @@ def windows_update():
     # The release tag and matching SHA-256 are set together ONLY after GitHub
     # confirms that the corresponding Windows EXE exists.
     release=os.getenv('MPOL_WINDOWS_RELEASE_TAG','v2.2.0').strip()
-    if not re.fullmatch(r'v\\d+\\.\\d+\\.\\d+',release):
+    if not re.fullmatch(r'v\d+\.\d+\.\d+',release):
         release='v2.2.0'
     version=release[1:]
     return {'version':version,'required':True,
