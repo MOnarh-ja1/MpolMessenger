@@ -110,8 +110,11 @@ async function loadCallIce(call){
   config.iceServers:MPOL_FALLBACK_ICE;
  call.relayConfigured=!!config?.relayConfigured;
  if(!call.relayConfigured){
-  $call('callQuality').textContent='Без TURN некоторые мобильные сети не пропускают звонки.';
+  $call('callQuality').textContent='На сервере пока нет TURN-релея. В другой мобильной сети звонок может не соединиться.';
   $call('callQuality').classList.add('warning');
+ }else{
+  $call('callQuality').textContent='TURN указан в настройках сервера · проверяем соединение…';
+  $call('callQuality').classList.remove('warning');
  }
  return true;
 }
