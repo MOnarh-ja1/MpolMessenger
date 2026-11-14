@@ -6,6 +6,7 @@ on:
     paths:
       - "client/**"
       - "server/**"
+      - "tests/**"
       - "assets/**"
       - "MpolMessenger.ico"
       - ".github/workflows/windows-release.yml"
