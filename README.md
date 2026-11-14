@@ -1,12 +1,12 @@
-> 🟢 **MPOL Messenger 2.0 Preview опубликован:** [скачать EXE для Windows](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.0.0-preview/MpolMessenger.exe) · [полный ZIP](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.0.0-preview/MpolMessenger_Full_Project.zip) · [открыть веб-версию](https://mpol-messenger-api.onrender.com).
+> 🟢 **MPOL Messenger 2.2 опубликован:** [скачать EXE для Windows](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.2.0/MpolMessenger.exe) · [полный ZIP](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.2.0/MpolMessenger_Full_Project.zip) · [открыть веб-версию](https://mpol-messenger-api.onrender.com).
 >
 > ✅ Аккаунты, чаты и файлы теперь сохраняются в **отдельной базе PostgreSQL в Neon**; сервер приложения размещён на Render и может перезапускаться без удаления этих данных.
 >
 > ⚠️ Бета-версия: бесплатный Render может переходить в сон, восстановление пароля по email не настроено, нет сквозного шифрования или гарантированной доступности 24/7. Не используйте пароль от других аккаунтов и не храните чувствительную информацию.
 
-# MPOL MESSENGER · 2.0 Preview
+# MPOL MESSENGER · 2.2
 
-Windows-клиент с чёрной темой MPOL BLACK и настоящим сервером. В preview добавлены голосовые сообщения, реакции, фотографии профиля, Избранное, архив и предварительные звонки WebRTC. Полный список реализованного и ограничений: [RELEASE_2_0_STATUS.md](RELEASE_2_0_STATUS.md).
+Windows-клиент с чёрной темой MPOL BLACK и настоящим сервером. В preview добавлены голосовые сообщения, реакции, фотографии профиля, Избранное, архив и предварительные звонки WebRTC. Новое в 2.2: независимые входы в разных окнах, правильные сообщения справа/слева, исправление обрезания интерфейса при F11, стабильнее обработка аудио и диагностика качества звонка. [Список изменений и ограничений](CHANGELOG_2_2.md).
 
 ## Что находится в архиве
 
