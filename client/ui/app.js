@@ -337,17 +337,24 @@ async function checkRequiredExeUpdate(){
  document.body.append(layer);
 }
 // Compact iPhone chat navigation: return to lists without losing messages.
-// Safari keyboard changes visualViewport without reliably updating CSS 100vh.
+// Safari shrinks visualViewport for the keyboard, but not always CSS 100dvh.
+// Only override height while an input is focused AND the keyboard is visible;
+// normal resizing/rotation should always use the browser's CSS dynamic viewport.
 function syncMpolMobileViewport(){
- if(!window.visualViewport)return;
- if(window.innerWidth<=600){
-  document.documentElement.style.setProperty('--mpol-mobile-height',
-   Math.round(window.visualViewport.height)+'px');
- }else document.documentElement.style.removeProperty('--mpol-mobile-height');
+ const root=document.documentElement;
+ const active=document.activeElement;
+ const editing=active&&['INPUT','TEXTAREA'].includes(active.tagName);
+ if(window.visualViewport&&window.innerWidth<=600&&editing&&
+    window.visualViewport.height<window.innerHeight-110){
+  root.style.setProperty('--mpol-mobile-height',
+    Math.round(window.visualViewport.height)+'px');
+ }else root.style.removeProperty('--mpol-mobile-height');
 }
 if(window.visualViewport){
  window.visualViewport.addEventListener('resize',syncMpolMobileViewport,{passive:true});
  window.addEventListener('resize',syncMpolMobileViewport,{passive:true});
+ document.addEventListener('focusin',syncMpolMobileViewport);
+ document.addEventListener('focusout',syncMpolMobileViewport);
  syncMpolMobileViewport();
 }
 const mobileBack=document.createElement('button');
