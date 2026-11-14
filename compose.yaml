@@ -14,11 +14,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
   api:
-    build: ./server
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       MPOL_DATABASE_URL: postgresql+psycopg://mpol:${MPOL_DB_PASSWORD}@db:5432/mpol
       MPOL_RECOVERY_SECRET: ${MPOL_RECOVERY_SECRET:?Define MPOL_RECOVERY_SECRET in .env}
+      MPOL_REQUIRE_PERSISTENT_DB: "1"
       MPOL_SMTP_HOST: ${MPOL_SMTP_HOST:-}
       MPOL_SMTP_PORT: ${MPOL_SMTP_PORT:-587}
       MPOL_SMTP_USER: ${MPOL_SMTP_USER:-}
@@ -28,7 +31,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - upload_data:/app/uploads
+      - upload_data:/app/server/uploads
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped

@@ -80,6 +80,7 @@ function showLogin(){
  $('sessionRestore').classList.add('hidden');
  $('rememberLoginRow').classList.toggle('hidden',isDesktopClient);
  $('rememberLogin').checked=rememberLogin;
+ $('ruServerDesktop').classList.toggle('hidden',!isDesktopClient);
  serverHealth();
 }
 function showSessionRestore(message){
@@ -472,6 +473,11 @@ function openSettings(){modal('Профиль и настройки',`<div class
  <div class="setting-row">Уведомления Windows <input type="checkbox" id="notificationsOn" ${state.notif?'checked':''}></div><div class="setting-row">Звук сообщений <input type="checkbox" id="soundsOn" ${state.sound?'checked':''}></div><div class="setting-row">Масштаб интерфейса <select id="scaleSelect"><option value="85">85%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select></div>
  </section><section class="settings-panel"><h3>Безопасность</h3><div class="setting-row">Email: ${esc(state.me.email||'не указан')} ${state.me.email_verified?'✓ подтверждён':'(не подтверждён)'}</div>${state.me.email&&!state.me.email_verified?'<button id="verifyEmail" class="button outlined">Подтвердить email</button>':''}<button id="changePassword" class="button outlined">Изменить пароль</button>${state.me.is_developer?'<details class="developer-settings developer-only"><summary>Режим разработчика</summary><p>Доступ защищён проверкой прав на сервере.</p><button id="checkDeveloper" class="button outlined">Проверить права разработчика</button><button id="serverSettings" class="button outlined">Настройка сервера</button></details>':''}</section><button id="logOut" class="button outlined">Выйти из аккаунта</button><p class="secondary">ID можно отправить друзьям для поиска. Пароль и токен никому не передавайте.</p>`);
  $('copyProfileId').onclick=copyAccountId;
+ if(isDesktopClient){
+  $('accountDetails').insertAdjacentHTML('beforeend',
+   '<button type="button" class="button outlined" id="ruServerProfile">🌐 Подключить сервер для России</button>');
+  $('ruServerProfile').onclick=()=>{location.href='mpol://settings'};
+ }
  $('uploadProfilePhoto').onclick=uploadProfilePhoto;
  $('profileStatus').value=state.me.status;$('scaleSelect').value=String(state.scale);
  $('saveProfile').onclick=async()=>{try{state.me=await api('/me',{method:'PATCH',body:{nick:$('profileNick').value,description:$('profileDescription').value,avatar:$('profileAvatar').value,status:$('profileStatus').value}});updateOwnAvatar();toast('Профиль сохранён');closeModal();refreshAll()}catch(e){toast(errorText(e))}};
@@ -509,7 +515,8 @@ $('rememberLogin').onchange=e=>storage.setRemember(e.target.checked);
 $('retrySession').onclick=()=>startup();
 $('switchAccount').onclick=()=>{storage.token='';showLogin();$('authError').textContent='Выберите аккаунт для входа.'};
 $('authForm').onsubmit=async e=>{e.preventDefault();$('authError').textContent='';$('authSubmit').disabled=true;try{const login=$('login').value.trim(),password=$('password').value;if(state.register&&password!==$('password2').value)throw Error('Пароли не совпадают');const body=state.register?{nick:$('nick').value,login,password,email:$('email').value||null}:{login,password};const data=await api(state.register?'/auth/register':'/auth/login',{method:'POST',body});storage.token=data.token;state.me=data.user;await showMain()}catch(e){$('authError').textContent=errorText(e)}finally{$('authSubmit').disabled=false}};
-$('configureServer').onclick=configServer;$('forgotPassword').onclick=forgotPassword;$('newMessage').onclick=()=>{if(state.tab==='notifications')refreshAll();else if(state.tab==='settings')openSettings();else if(state.tab==='groups')createGroup();else findFriends()};$('createGroup').onclick=createGroup;
+$('configureServer').onclick=configServer;
+$('ruServerDesktop').onclick=()=>{if(isDesktopClient)location.href='mpol://settings'};$('forgotPassword').onclick=forgotPassword;$('newMessage').onclick=()=>{if(state.tab==='notifications')refreshAll();else if(state.tab==='settings')openSettings();else if(state.tab==='groups')createGroup();else findFriends()};$('createGroup').onclick=createGroup;
 
 document.querySelectorAll('[data-filter]').forEach(el=>el.onclick=()=>{state.chatFilter=el.dataset.filter;updateFilters();renderList()});
 updateFilters();

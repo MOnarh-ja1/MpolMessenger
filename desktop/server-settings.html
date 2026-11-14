@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'">
+<title>MPOL — подключение без VPN</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,Segoe UI,Arial,sans-serif}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0b0b0d;color:#efeff1;display:grid;place-items:center;padding:28px}
+.panel{max-width:550px;width:100%;border:1px solid #35353b;background:#19191d;border-radius:22px;padding:30px}
+.brand{font-size:13px;color:#9999a1;letter-spacing:2px;font-weight:700}
+h1{font-size:24px;margin:15px 0}p{color:#ababaf;font-size:13px;line-height:1.65}
+label{display:block;font-size:13px;font-weight:700;margin-top:22px}
+input{display:block;background:#101013;color:#fff;border:1px solid #575761;border-radius:10px;padding:14px 12px;width:100%;font-size:15px;margin:8px 0 10px}
+.buttons{display:flex;flex-wrap:wrap;gap:9px;margin-top:15px}
+button{border:1px solid #505057;border-radius:10px;background:#29292d;color:#fff;padding:12px 13px;cursor:pointer;font-size:13px}
+button.primary{background:#eeeef0;color:#151516;font-weight:750}
+button:disabled{opacity:.5;cursor:wait}
+.help{margin-top:20px;background:#24242a;border-radius:10px;padding:13px;font-size:12px}
+.help strong{color:#fff}
+#current{overflow-wrap:anywhere;color:#dedee2}#status{min-height:24px;margin-top:10px}#status.error{color:#ffb5b5}
+</style></head><body><main class="panel">
+<div class="brand">MPOL MESSENGER · ПОДКЛЮЧЕНИЕ</div>
+<h1>Сервер для России</h1>
+<p>Приложение может подключаться к вашему серверу MPOL в России без VPN. Сначала разместите серверную часть в российском облаке. Само изменение адреса не создаёт сервер.</p>
+<form id="form">
+<label for="serverInput">Адрес вашего MPOL-сервера (HTTPS)</label>
+<input id="serverInput" type="url" spellcheck="false" required placeholder="https://ваш-mpol-сервер.ru" autocomplete="url">
+<div class="buttons"><button type="submit" id="save" class="primary">Проверить и подключиться</button>
+<button type="button" id="reset">Основной сервер Render</button>
+<button type="button" id="retry">Вернуться в MPOL</button></div></form>
+<div id="status" role="status" aria-live="polite"></div>
+<div class="help"><strong>Текущий сервер:</strong> <span id="current">—</span>
+<p>Для сохранения существующих аккаунтов оба сервера должны использовать одну и ту же базу PostgreSQL. Нельзя вводить чужие адреса: пароли и переписки передаются выбранному серверу.</p>
+<p>Открыть это окно можно в любое время сочетанием <strong>Ctrl + Shift + S</strong>.</p></div>
+</main><script defer src="./server-settings.js"></script></body></html>

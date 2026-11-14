@@ -1,13 +1,78 @@
 'use strict';
-const { app, BrowserWindow, Menu, dialog, session, shell, desktopCapturer } = require('electron');
+const { app, BrowserWindow, Menu, dialog, session, shell, desktopCapturer, ipcMain, net } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
-const { SERVER_ORIGIN, isMpolUrl, canOpenExternal,
+const { pathToFileURL } = require('node:url');
+const { SERVER_ORIGIN, normalizeServerOrigin, isMpolUrl, canOpenExternal,
   safeFilename, normalizeMediaTypes } = require('./lib/security.cjs');
 
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '3.1.0';
 const { offerDesktopUpdate } = require('./lib/updater.cjs');
-const APP_URL = SERVER_ORIGIN + '/?mpol_client=' + APP_VERSION;
+let activeServerOrigin=SERVER_ORIGIN;
+const isTrustedUrl=url=>isMpolUrl(url,activeServerOrigin);
+const appUrl=()=>activeServerOrigin+'/?mpol_client='+APP_VERSION;
+function serverStatePath(){return path.join(app.getPath('userData'),'server-origin.json')}
+function readServerOrigin(){
+ try{
+  const data=JSON.parse(fs.readFileSync(serverStatePath(),'utf8'));
+  return normalizeServerOrigin(data.origin)||SERVER_ORIGIN;
+ }catch{return SERVER_ORIGIN}
+}
+function saveServerOrigin(origin){
+ const dest=serverStatePath();
+ fs.mkdirSync(path.dirname(dest),{recursive:true});
+ fs.writeFileSync(dest,JSON.stringify({origin}),{mode:0o600});
+}
+function openServerSettings(win){
+ if(!win||win.isDestroyed())return;
+ win.loadFile(path.join(__dirname,'server-settings.html')).catch(()=>{});
+}
+function retryServer(win){
+ if(!win||win.isDestroyed())return;
+ win.loadURL(appUrl()).catch(()=>{
+  if(!win.isDestroyed())win.loadFile(path.join(__dirname,'offline.html')).catch(()=>{});
+ });
+}
+function isSettingsPage(url){
+ return url===pathToFileURL(path.join(__dirname,'server-settings.html')).href;
+}
+function installServerSettingsIpc(){
+ ipcMain.handle('mpol:current-server',event=>{
+  if(!isSettingsPage(event.senderFrame?.url||''))throw Error('Unauthorized server settings');
+  return {current:activeServerOrigin,defaultOrigin:SERVER_ORIGIN};
+ });
+ ipcMain.handle('mpol:retry-server',event=>{
+  if(!isSettingsPage(event.senderFrame?.url||''))throw Error('Unauthorized server retry');
+  retryServer(BrowserWindow.fromWebContents(event.sender));
+  return {ok:true};
+ });
+ ipcMain.handle('mpol:select-server',async(event,raw)=>{
+  if(!isSettingsPage(event.senderFrame?.url||''))throw Error('Unauthorized server change');
+  const win=BrowserWindow.fromWebContents(event.sender);
+  if(!win||win.isDestroyed())return {ok:false,error:'Окно приложения закрыто'};
+  const origin=normalizeServerOrigin(raw);
+  if(!origin)return {ok:false,error:'Укажите HTTPS-адрес вида https://имя.домен без пути и параметров'};
+  if(origin!==SERVER_ORIGIN){
+   try{
+    const response=await net.fetch(origin+'/api/health',{headers:{'Accept':'application/json'},
+      signal:AbortSignal.timeout(12000)});
+    if(!response.ok)return {ok:false,error:'Сервер не отвечает: HTTP '+response.status};
+    const health=await response.json();
+    if(health?.ok!==true||health?.service!=='mpol-messenger')
+     return {ok:false,error:'Это не подтверждённый сервер MPOL. Обновите его код до версии 3.1'};
+   }catch(e){return {ok:false,error:'Не удалось подключиться по HTTPS: '+(e.message||e)}}
+   const confirmation=await dialog.showMessageBox(win,{
+    title:'Подключение к другому серверу MPOL',type:'warning',
+    message:'Подключить MPOL к '+origin+'?',
+    detail:'Для смены сервера потребуется снова войти. Пароль и сообщения поступят на этот сервер. Выбирайте только собственный адрес MPOL, подключённый к существующей базе данных.',
+    buttons:['Подключить','Отмена'],defaultId:1,cancelId:1,noLink:true
+   });
+   if(confirmation.response!==0)return {ok:false,error:'Изменение отменено'};
+  }
+  saveServerOrigin(origin);activeServerOrigin=origin;retryServer(win);
+  return {ok:true};
+ });
+}
 const WINDOW_PARTITION = 'persist:mpol-desktop-v23';
 let mainWindow;
 
@@ -47,7 +112,7 @@ function setupPermissions(ses) {
   const mediaGrants = new Set();
   let notificationsGranted = false;
   ses.setPermissionCheckHandler((_wc, permission, origin, details) => {
-    const verified = isMpolUrl(details?.requestingUrl || origin);
+    const verified = isTrustedUrl(details?.requestingUrl || origin);
     if (!verified) return false;
     if (permission === 'notifications') return notificationsGranted;
     // Copying user-selected text is allowed only on our verified HTTPS origin.
@@ -61,7 +126,7 @@ function setupPermissions(ses) {
     return false;
   });
   ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
-    if (!isMpolUrl(details?.requestingUrl || webContents.getURL())) {
+    if (!isTrustedUrl(details?.requestingUrl || webContents.getURL())) {
       callback(false); return;
     }
     if (permission === 'clipboard-sanitized-write'||permission === 'clipboard-write') {
@@ -97,7 +162,7 @@ function setupPermissions(ses) {
     callback(false);
   });
   ses.setDisplayMediaRequestHandler(async (request, callback) => {
-    if (!isMpolUrl(request.securityOrigin) || !request.videoRequested || !request.userGesture) {
+    if (!isTrustedUrl(request.securityOrigin) || !request.videoRequested || !request.userGesture) {
       callback(null); return;
     }
     try {
@@ -119,7 +184,7 @@ function setupPermissions(ses) {
     } catch {callback(null);}
   });
   ses.on('will-download',(event,item,wc) => {
-    if (!wc || !isMpolUrl(wc.getURL())) {event.preventDefault();return;}
+    if (!wc || !isTrustedUrl(wc.getURL())) {event.preventDefault();return;}
     item.setSaveDialogOptions({
       title:'Сохранить файл из MPOL Messenger',
       defaultPath:path.join(app.getPath('downloads'),safeFilename(item.getFilename()))
@@ -139,6 +204,7 @@ function createWindow() {
     backgroundColor:'#0b0b0d',autoHideMenuBar:true,
     icon:iconPath(),
     webPreferences:{
+      preload:path.join(__dirname,'preload.cjs'),
       partition:WINDOW_PARTITION,
       nodeIntegration:false,contextIsolation:true,sandbox:true,
       webSecurity:true,allowRunningInsecureContent:false,
@@ -156,19 +222,24 @@ function createWindow() {
     return {action:'deny'};
   });
   win.webContents.on('will-navigate',(event,url)=>{
-    if (!isMpolUrl(url)) {
-      event.preventDefault();
-      navigateExternal(url);
+    if(url==='mpol://settings'){
+      event.preventDefault();openServerSettings(win);return;
+    }
+    if(url==='mpol://retry'){
+      event.preventDefault();retryServer(win);return;
+    }
+    if(!isTrustedUrl(url)){
+      event.preventDefault();navigateExternal(url);
     }
   });
   win.webContents.on('will-redirect',(event,url)=>{
-    if (!isMpolUrl(url)) event.preventDefault();
+    if (!isTrustedUrl(url)) event.preventDefault();
   });
   win.webContents.on('will-attach-webview',e=>e.preventDefault());
   // Without the native menu, Chromium's text selection has no right-click
   // copy/paste controls inside a frameless app. Expose standard OS roles only.
   win.webContents.on('context-menu',(_event,params)=>{
-    if(!isMpolUrl(win.webContents.getURL()))return;
+    if(!isTrustedUrl(win.webContents.getURL()))return;
     const options=[];
     const editable=!!params.isEditable;
     const selected=!!params.selectionText?.length;
@@ -184,30 +255,30 @@ function createWindow() {
   });
   win.webContents.on('before-input-event',(e,input)=>{
     if (input.type !== 'keyDown' || input.isAutoRepeat) return;
-    if (input.key === 'F11') {
+    if(input.control&&input.shift&&input.key.toLowerCase()==='s'){
+      e.preventDefault();openServerSettings(win);
+    }else if (input.key === 'F11') {
       e.preventDefault();win.setFullScreen(!win.isFullScreen());
     } else if (input.key === 'Escape' && win.isFullScreen()) {
       e.preventDefault();win.setFullScreen(false);
     } else if (input.control && input.key.toLowerCase() === 'r') {
-      e.preventDefault();win.loadURL(APP_URL);
+      e.preventDefault();retryServer(win);
     } else if (input.key === 'F12' || (input.control&&input.shift&&input.key.toLowerCase()==='i')) {
       e.preventDefault();
     }
   });
   win.webContents.on('did-fail-load',(_event,code,_desc,url,isMainFrame)=>{
-    if (isMainFrame && code!==-3 && isMpolUrl(url)) {
+    if (isMainFrame && code!==-3 && isTrustedUrl(url)) {
       win.loadFile(path.join(__dirname,'offline.html')).catch(()=>{});
     }
   });
   win.webContents.once('did-finish-load',()=>{
     // Check releases silently; prompt only if a newer verified desktop EXE exists.
-    if (win.webContents.getURL().startsWith(SERVER_ORIGIN+'/')) {
+    if (isTrustedUrl(win.webContents.getURL())) {
       offerDesktopUpdate(win,APP_VERSION).catch(()=>{});
     }
   });
-  win.loadURL(APP_URL).catch(()=>{
-    if (!win.isDestroyed()) win.loadFile(path.join(__dirname,'offline.html')).catch(()=>{});
-  });
+  retryServer(win);
 }
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -220,6 +291,8 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(()=>{
     if (process.platform === 'win32') app.setAppUserModelId('com.mpol.messenger.desktop');
     Menu.setApplicationMenu(null);
+    activeServerOrigin=readServerOrigin();
+    installServerSettingsIpc();
     createWindow();
     app.on('activate',()=>{
       if (BrowserWindow.getAllWindows().length===0) createWindow();
