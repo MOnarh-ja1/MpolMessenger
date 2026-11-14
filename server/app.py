@@ -21,6 +21,7 @@ from argon2 import PasswordHasher
 from argon2.low_level import Type
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine, select, delete, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
@@ -218,7 +219,7 @@ def members_of(d: Session, cid: str):
     return list(d.scalars(select(Member.user_id).where(Member.chat_id==cid)).all())
 
 @app.get('/api/health')
-def health(): return {'ok':True,'version':'0.1.0'}
+def health(): return {'ok':True,'version':'0.1.1','temporary_storage':os.getenv('MPOL_EPHEMERAL_STORAGE') == '1'}
 
 @app.post('/api/auth/register')
 def register(body: Register, request: Request, d:Session=Depends(db)):
@@ -601,3 +602,8 @@ async def websocket(ws:WebSocket):
                     fs=d.scalars(select(Friendship).where(Friendship.state=='accepted',((Friendship.from_id==uid)|(Friendship.to_id==uid)))).all()
                     friends=[f.to_id if f.from_id==uid else f.from_id for f in fs]
                 await emit(friends,{'type':'presence','user_id':uid,'online':False})
+
+# Serve the same MPOL interface in a normal browser as well as the Windows client.
+UI_DIR = ROOT.parent / "client" / "ui"
+if UI_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(UI_DIR), html=True), name="mpol-ui")
