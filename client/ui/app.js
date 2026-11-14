@@ -276,4 +276,27 @@ setInterval(()=>{if(!state.me)serverHealth()},10000);
 setInterval(()=>{if(state.me)refreshRequests()},12000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.me)refreshAll()});
 window.addEventListener('focus',()=>{if(state.me)refreshRequests()});
+
+function checkRequiredExeUpdate(){
+ const params=new URLSearchParams(location.search);
+ const version=params.get('mpol_client');
+ const appWindow=(window.matchMedia?.('(display-mode: standalone)').matches||
+  window.matchMedia?.('(display-mode: minimal-ui)').matches||navigator.standalone===true);
+ if(location.hostname!=='mpol-messenger-api.onrender.com')return;
+ if(!appWindow&&!version)return;
+ if(version==='2.1.0')return;
+ // The old EXE did not include an updater: its hosted UI can still show
+ // a blocking version notice. Browsers cannot silently execute downloads.
+ const layer=document.createElement('div');
+ layer.className='mpol-required-update';
+ layer.innerHTML='<div class="mpol-update-card"><div class="mpol-update-label">MPOL · ОБНОВЛЕНИЕ</div>'+
+ '<h2>Требуется новая версия</h2>'+
+ '<p>Вышел Mpol Messenger 2.1.0. Исправлены звонки, настройки профиля, аватары и удаление сообщений.</p>'+
+ '<p>Скачайте новый EXE, закройте старое окно и запустите скачанную версию. Аккаунт и переписки останутся на сервере.</p>'+
+ '<a class="mpol-update-download" href="https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.1.0/MpolMessenger.exe" target="_blank" rel="noopener">Скачать обновление EXE ↗</a>'+
+ '<small>Браузер по правилам Windows не может автоматически открыть скачанный EXE.</small></div>';
+ document.body.append(layer);
+}
+checkRequiredExeUpdate();
+
 startup();
