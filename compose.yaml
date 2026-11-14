@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mpol
+      POSTGRES_USER: mpol
+      POSTGRES_PASSWORD: ${MPOL_DB_PASSWORD:?Define MPOL_DB_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mpol -d mpol"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  api:
+    build: ./server
+    restart: unless-stopped
+    environment:
+      MPOL_DATABASE_URL: postgresql+psycopg://mpol:${MPOL_DB_PASSWORD}@db:5432/mpol
+      MPOL_RECOVERY_SECRET: ${MPOL_RECOVERY_SECRET:?Define MPOL_RECOVERY_SECRET in .env}
+      MPOL_SMTP_HOST: ${MPOL_SMTP_HOST:-}
+      MPOL_SMTP_PORT: ${MPOL_SMTP_PORT:-587}
+      MPOL_SMTP_USER: ${MPOL_SMTP_USER:-}
+      MPOL_SMTP_PASSWORD: ${MPOL_SMTP_PASSWORD:-}
+      MPOL_SMTP_FROM: ${MPOL_SMTP_FROM:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - upload_data:/app/uploads
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      MPOL_DOMAIN: ${MPOL_DOMAIN:?Define MPOL_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+volumes:
+  postgres_data:
+  upload_data:
+  caddy_data:
+  caddy_config:

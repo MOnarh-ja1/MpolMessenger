@@ -1,0 +1,603 @@
+"""Mpol Messenger API. FastAPI + SQLAlchemy + Argon2id + WebSockets.
+Use SQLite for a local demo, PostgreSQL for a hosted deployment.
+"""
+from __future__ import annotations
+import asyncio
+import hashlib
+import hmac
+import smtplib
+from email.message import EmailMessage
+import os
+import re
+import secrets
+import time
+import uuid
+from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+from argon2 import PasswordHasher
+from argon2.low_level import Type
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, UploadFile, File, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine, select, delete, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
+
+ROOT = Path(__file__).parent
+DATABASE_URL = os.getenv("MPOL_DATABASE_URL", f"sqlite:///{ROOT / 'mpol.db'}")
+UPLOAD_DIR = Path(os.getenv("MPOL_UPLOAD_DIR", str(ROOT / 'uploads')))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+SQLITE = DATABASE_URL.startswith("sqlite")
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if SQLITE else {}, pool_pre_ping=True)
+SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2, hash_len=32, salt_len=16, type=Type.ID)
+app = FastAPI(title="MPOL Messenger API", docs_url=None if os.getenv("MPOL_DISABLE_DOCS") == "1" else "/docs")
+
+class Base(DeclarativeBase): pass
+
+def now(): return datetime.now(timezone.utc).replace(tzinfo=None)
+
+class User(Base):
+    __tablename__ = 'users'
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)
+    login: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    nick: Mapped[str] = mapped_column(String(64))
+    password_hash: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(String(260), default='')
+    email: Mapped[str | None] = mapped_column(String(254), unique=True, nullable=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(16), default='online')
+    avatar: Mapped[str] = mapped_column(String(16), default='◉')
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class SessionToken(Base):
+    __tablename__ = 'sessions'
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+class Friendship(Base):
+    __tablename__ = 'friendships'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    from_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
+    to_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
+    state: Mapped[str] = mapped_column(String(12), default='pending')
+    __table_args__ = (UniqueConstraint('from_id', 'to_id'),)
+
+class Block(Base):
+    __tablename__ = 'blocks'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    actor_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
+    target_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
+    __table_args__ = (UniqueConstraint('actor_id', 'target_id'),)
+
+class Chat(Base):
+    __tablename__ = 'chats'
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), default='')
+    is_group: Mapped[bool] = mapped_column(Boolean, default=False)
+    owner_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class Member(Base):
+    __tablename__ = 'members'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey('chats.id'), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), index=True)
+    role: Mapped[str] = mapped_column(String(12), default='member')
+    read_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    __table_args__ = (UniqueConstraint('chat_id','user_id'),)
+
+class Message(Base):
+    __tablename__ = 'messages'
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey('chats.id'), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
+    body: Mapped[str] = mapped_column(Text, default='')
+    reply_to: Mapped[str | None] = mapped_column(ForeignKey('messages.id'), nullable=True)
+    attachment_id: Mapped[str | None] = mapped_column(ForeignKey('attachments.id'), nullable=True)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+
+class EmailToken(Base):
+    __tablename__ = 'email_tokens'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), index=True)
+    purpose: Mapped[str] = mapped_column(String(12))
+    token_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+class Attachment(Base):
+    __tablename__ = 'attachments'
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey('chats.id'))
+    owner_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
+    display_name: Mapped[str] = mapped_column(String(160))
+    content_type: Mapped[str] = mapped_column(String(100))
+    file_path: Mapped[str] = mapped_column(Text)
+    size: Mapped[int] = mapped_column(Integer)
+
+Base.metadata.create_all(engine)
+
+class Register(BaseModel):
+    login: str = Field(min_length=3,max_length=32)
+    nick: str = Field(min_length=1,max_length=48)
+    password: str = Field(min_length=10,max_length=256)
+    email: str | None = None
+class Login(BaseModel):
+    login: str
+    password: str
+class FriendRequest(BaseModel): target_id: str
+class FriendRespond(BaseModel): accept: bool
+class NewChat(BaseModel): name: str = Field(min_length=2,max_length=80); members: list[str] = Field(default_factory=list, max_length=30)
+class NewMessage(BaseModel):
+    body: str = Field(default='',max_length=4000)
+    reply_to: str | None = None
+    attachment_id: str | None = None
+class EditMessage(BaseModel): body: str = Field(min_length=1,max_length=4000)
+class ProfileEdit(BaseModel):
+    nick: str | None = Field(None,min_length=1,max_length=48)
+    description: str | None = Field(None,max_length=260)
+    status: str | None = None
+    avatar: str | None = Field(None,max_length=8)
+class PasswordChange(BaseModel): old_password: str; new_password: str = Field(min_length=10,max_length=256)
+class MemberAdd(BaseModel): user_id: str
+class EmailConfirm(BaseModel): code: str = Field(min_length=8,max_length=8)
+class ResetRequest(BaseModel): email: str
+class ResetConfirm(BaseModel):
+    email: str
+    code: str = Field(min_length=8,max_length=8)
+    new_password: str = Field(min_length=10,max_length=256)
+
+# In-memory limits are suitable for a single process; use Redis/shared limiting for multiple workers.
+limits: dict[str, deque] = defaultdict(deque)
+def limit(key: str, count: int, window: int):
+    q = limits[key]; t = time.monotonic()
+    while q and q[0] < t-window: q.popleft()
+    if len(q) >= count: raise HTTPException(429, 'Слишком много запросов. Повторите позже.')
+    q.append(t)
+
+
+def db():
+    with SessionLocal() as d: yield d
+
+def hash_token(t: str) -> str: return hashlib.sha256(t.encode()).hexdigest()
+def issue_token(d: Session, user_id: str):
+    token = secrets.token_urlsafe(36)
+    d.add(SessionToken(token_hash=hash_token(token), user_id=user_id,expires_at=now()+timedelta(days=30)))
+    d.commit()
+    return token
+
+def authed(authorization: str | None = Header(default=None), d: Session = Depends(db)) -> User:
+    token = (authorization or '').removeprefix('Bearer ').strip()
+    if not token: raise HTTPException(401,'Необходим вход')
+    sess = d.get(SessionToken,hash_token(token))
+    if sess is None or sess.expires_at < now(): raise HTTPException(401,'Сессия недействительна')
+    user = d.get(User,sess.user_id)
+    if not user: raise HTTPException(401,'Пользователь не найден')
+    return user
+
+def private_user_json(u: User):
+    return {**user_json(u), "email":u.email,"email_verified":u.email_verified}
+
+def user_json(u: User):
+    return {'id':u.id,'nick':u.nick,'avatar':u.avatar,'description':u.description,
+            'status':u.status, 'online':(u.id in sockets and bool(sockets[u.id]) and u.status!='invisible')}
+
+def get_member(d: Session, chat_id: str, user_id: str) -> Member:
+    m = d.scalar(select(Member).where(Member.chat_id==chat_id,Member.user_id==user_id))
+    if not m: raise HTTPException(403,'Нет доступа к этому чату')
+    return m
+
+def is_friend(d:Session, x:str,y:str):
+    return d.scalar(select(Friendship).where(Friendship.state=='accepted',
+                  ((Friendship.from_id==x)&(Friendship.to_id==y)) | ((Friendship.from_id==y)&(Friendship.to_id==x)))) is not None
+
+def blocked(d:Session, x:str,y:str):
+    return d.scalar(select(Block).where(((Block.actor_id==x)&(Block.target_id==y))|((Block.actor_id==y)&(Block.target_id==x)))) is not None
+
+def msg_json(d: Session, m: Message):
+    sender = d.get(User,m.user_id)
+    a = d.get(Attachment,m.attachment_id) if m.attachment_id else None
+    return {'id':m.id,'chat_id':m.chat_id,'user_id':m.user_id,'nick':sender.nick if sender else 'Удалён',
+            'avatar':sender.avatar if sender else '◉', 'body': '' if m.deleted else m.body,
+            'reply_to':m.reply_to,'attachment':({'id':a.id,'name':a.display_name,'size':a.size,'type':a.content_type} if a and not m.deleted else None),
+            'deleted':m.deleted,'sent_at':m.sent_at.isoformat()+'Z','edited_at':m.edited_at.isoformat()+'Z' if m.edited_at else None}
+
+sockets: dict[str,set[WebSocket]] = defaultdict(set)
+async def emit(ids: list[str] | set[str], payload: dict):
+    for uid in set(ids):
+        for ws in list(sockets.get(uid,())):
+            try: await ws.send_json(payload)
+            except Exception: sockets[uid].discard(ws)
+
+def members_of(d: Session, cid: str):
+    return list(d.scalars(select(Member.user_id).where(Member.chat_id==cid)).all())
+
+@app.get('/api/health')
+def health(): return {'ok':True,'version':'0.1.0'}
+
+@app.post('/api/auth/register')
+def register(body: Register, request: Request, d:Session=Depends(db)):
+    limit('register:'+request.client.host,5,3600)
+    login=body.login.lower().strip()
+    if not re.fullmatch(r'[a-z0-9_.-]{3,32}',login): raise HTTPException(400,'Логин: латинские буквы, цифры, . _ -')
+    if d.scalar(select(User).where(User.login==login)): raise HTTPException(409,'Логин занят')
+    email=body.email.strip().lower() if body.email else None
+    if email and (len(email)>254 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email)): raise HTTPException(400,'Неверный email')
+    if email and d.scalar(select(User).where(User.email==email)): raise HTTPException(409,'Email уже используется')
+    uid='MP'+secrets.token_hex(5).upper()
+    if not body.nick.strip(): raise HTTPException(400,"Никнейм не может быть пустым")
+    u=User(id=uid,login=login,nick=body.nick.strip(),password_hash=ph.hash(body.password),email=email)
+    d.add(u);d.commit()
+    return {'token':issue_token(d,uid),'user':private_user_json(u)}
+
+@app.post('/api/auth/login')
+def login(body:Login,request:Request,d:Session=Depends(db)):
+    limit('login:'+request.client.host,15,600)
+    u=d.scalar(select(User).where(User.login==body.login.strip().lower()))
+    try:
+        if not u: ph.verify(ph.hash('dummy-not-a-real-password'),body.password) # keep similar error
+        else: ph.verify(u.password_hash,body.password)
+    except Exception: raise HTTPException(401,'Неверный логин или пароль')
+    if not u: raise HTTPException(401,'Неверный логин или пароль')
+    if ph.check_needs_rehash(u.password_hash): u.password_hash=ph.hash(body.password); d.commit()
+    return {'token':issue_token(d,u.id),'user':private_user_json(u)}
+
+@app.post('/api/auth/logout')
+def logout(authorization:str|None=Header(None),u:User=Depends(authed),d:Session=Depends(db)):
+    token=(authorization or '').removeprefix('Bearer ').strip()
+    d.execute(delete(SessionToken).where(SessionToken.token_hash==hash_token(token)));d.commit()
+    return {'ok':True}
+
+@app.get('/api/me')
+def me(u:User=Depends(authed)): return private_user_json(u)
+
+@app.patch('/api/me')
+async def update_me(body:ProfileEdit,u:User=Depends(authed),d:Session=Depends(db)):
+    if body.nick is not None:
+        if not body.nick.strip():raise HTTPException(400,"Никнейм не может быть пустым")
+        u.nick=body.nick.strip()
+    if body.description is not None:u.description=body.description
+    if body.status is not None:
+        if body.status not in ('online','away','dnd','invisible'):raise HTTPException(400,'Неверный статус')
+        u.status=body.status
+    if body.avatar is not None: u.avatar=body.avatar or '◉'
+    d.commit()
+    friends = [f.to_id if f.from_id==u.id else f.from_id for f in d.scalars(select(Friendship).where(Friendship.state=='accepted',((Friendship.from_id==u.id)|(Friendship.to_id==u.id)))).all()]
+    await emit(friends,{'type':'profile','user':user_json(u)})
+    return private_user_json(u)
+
+@app.post('/api/me/password')
+def change_password(body:PasswordChange,u:User=Depends(authed),d:Session=Depends(db)):
+    try: ph.verify(u.password_hash,body.old_password)
+    except Exception: raise HTTPException(400,'Текущий пароль неверен')
+    u.password_hash=ph.hash(body.new_password)
+    d.execute(delete(SessionToken).where(SessionToken.user_id==u.id))
+    d.commit()
+    return {'ok':True,'reauth':True}
+
+# Email verification/password recovery require a configured SMTP relay.
+MAIL_SECRET = os.environ.get('MPOL_RECOVERY_SECRET', secrets.token_urlsafe(48)).encode()
+def mail_hash(uid: str, purpose: str, code: str) -> str:
+    return hmac.new(MAIL_SECRET,(uid+':'+purpose+':'+code).encode(),hashlib.sha256).hexdigest()
+
+def send_mail(to: str, subject: str, body: str):
+    host=os.environ.get('MPOL_SMTP_HOST')
+    from_addr=os.environ.get('MPOL_SMTP_FROM')
+    if not host or not from_addr:raise HTTPException(503,'Восстановление недоступно: SMTP не настроен')
+    port=int(os.environ.get('MPOL_SMTP_PORT','587'))
+    msg=EmailMessage()
+    msg['From']=from_addr;msg['To']=to;msg['Subject']=subject
+    msg.set_content(body)
+    try:
+        with smtplib.SMTP(host,port,timeout=12) as smtp:
+            smtp.starttls()
+            username=os.environ.get('MPOL_SMTP_USER','')
+            if username:smtp.login(username,os.environ.get('MPOL_SMTP_PASSWORD',''))
+            smtp.send_message(msg)
+    except Exception:
+        raise HTTPException(503,'Не удалось отправить письмо. Проверьте настройки SMTP')
+
+def issue_mail_code(d:Session,u:User,purpose:str):
+    code=f'{secrets.randbelow(100_000_000):08d}'
+    d.execute(delete(EmailToken).where(EmailToken.user_id==u.id,EmailToken.purpose==purpose))
+    d.add(EmailToken(user_id=u.id,purpose=purpose,token_hash=mail_hash(u.id,purpose,code),expires_at=now()+timedelta(minutes=15)))
+    d.commit()
+    send_mail(u.email,'MPOL Messenger — код подтверждения',f'Ваш код MPOL: {code}\n\nКод действует 15 минут. Если вы не запрашивали код, игнорируйте письмо.')
+
+def use_mail_code(d:Session,u:User,purpose:str,code:str):
+    token=d.scalar(select(EmailToken).where(EmailToken.user_id==u.id,EmailToken.purpose==purpose))
+    if not token or token.expires_at<now() or not hmac.compare_digest(token.token_hash,mail_hash(u.id,purpose,code)):
+        raise HTTPException(400,'Неверный или устаревший код')
+    d.delete(token)
+
+@app.post('/api/auth/email/verification/request')
+def email_verification_request(u:User=Depends(authed),d:Session=Depends(db)):
+    limit('verify:'+u.id,3,3600)
+    if not u.email:raise HTTPException(400,'Email не указан при регистрации')
+    if u.email_verified:return {'ok':True}
+    issue_mail_code(d,u,'verify')
+    return {'ok':True}
+
+@app.post('/api/auth/email/verification/confirm')
+def email_verification_confirm(body:EmailConfirm,u:User=Depends(authed),d:Session=Depends(db)):
+    limit('verify-codes:'+u.id,8,3600)
+    use_mail_code(d,u,'verify',body.code)
+    u.email_verified=True;d.commit()
+    return {'ok':True}
+
+@app.post('/api/auth/password/reset/request')
+def reset_request(body:ResetRequest,request:Request,d:Session=Depends(db)):
+    limit('reset:'+request.client.host,5,3600)
+    user=d.scalar(select(User).where(User.email==body.email.lower().strip(),User.email_verified==True))
+    if user:
+        issue_mail_code(d,user,'reset')
+    return {'ok':True,'message':'Если подтверждённый адрес существует, отправлен код.'}
+
+@app.post('/api/auth/password/reset/confirm')
+def reset_confirm(body:ResetConfirm,request:Request,d:Session=Depends(db)):
+    limit('reset-code:'+request.client.host,10,3600)
+    user=d.scalar(select(User).where(User.email==body.email.lower().strip(),User.email_verified==True))
+    if not user:raise HTTPException(400,'Неверный или устаревший код')
+    use_mail_code(d,user,'reset',body.code)
+    user.password_hash=ph.hash(body.new_password)
+    d.execute(delete(SessionToken).where(SessionToken.user_id==user.id));d.commit()
+    return {'ok':True}
+
+@app.get('/api/users/{user_id}')
+def profile(user_id:str,u:User=Depends(authed),d:Session=Depends(db)):
+    x=d.get(User,user_id)
+    if not x: raise HTTPException(404,'Пользователь не найден')
+    return user_json(x)
+
+@app.get('/api/friends')
+def friends(u:User=Depends(authed),d:Session=Depends(db)):
+    fs=d.scalars(select(Friendship).where(Friendship.state=='accepted',((Friendship.from_id==u.id)|(Friendship.to_id==u.id)))).all()
+    return [user_json(d.get(User,f.to_id if f.from_id==u.id else f.from_id)) for f in fs]
+
+@app.get('/api/friends/requests')
+def friend_requests(u:User=Depends(authed),d:Session=Depends(db)):
+    fs=d.scalars(select(Friendship).where(Friendship.to_id==u.id,Friendship.state=='pending')).all()
+    return [{'request_id':f.id,'user':user_json(d.get(User,f.from_id))} for f in fs]
+
+@app.post('/api/friends/request')
+async def request_friend(body:FriendRequest,u:User=Depends(authed),d:Session=Depends(db)):
+    limit('friend:'+u.id,20,3600)
+    x=d.get(User,body.target_id)
+    if not x or x.id==u.id:raise HTTPException(404,'Пользователь не найден')
+    if blocked(d,u.id,x.id):raise HTTPException(403,'Запрос недоступен')
+    old=d.scalar(select(Friendship).where(((Friendship.from_id==u.id)&(Friendship.to_id==x.id)) | ((Friendship.from_id==x.id)&(Friendship.to_id==u.id))))
+    if old:
+        if old.state=='accepted':return {'ok':True,'state':'accepted'}
+        if old.from_id==x.id and old.to_id==u.id and old.state=='pending':
+            old.state='accepted';d.commit();await emit([x.id,u.id],{'type':'friends_changed'});return {'ok':True,'state':'accepted'}
+        raise HTTPException(409,'Заявка уже существует')
+    d.add(Friendship(from_id=u.id,to_id=x.id,state='pending'));d.commit()
+    await emit([x.id],{'type':'friends_changed'})
+    return {'ok':True,'state':'pending'}
+
+@app.post('/api/friends/requests/{request_id}')
+async def answer_request(request_id:int,body:FriendRespond,u:User=Depends(authed),d:Session=Depends(db)):
+    f=d.get(Friendship,request_id)
+    if not f or f.to_id!=u.id or f.state!='pending':raise HTTPException(404,'Заявка не найдена')
+    if body.accept:f.state='accepted'
+    else:d.delete(f)
+    d.commit();await emit([u.id,f.from_id],{'type':'friends_changed'})
+    return {'ok':True}
+
+@app.post('/api/users/{user_id}/block')
+async def block_user(user_id:str,u:User=Depends(authed),d:Session=Depends(db)):
+    if not d.get(User,user_id) or user_id==u.id:raise HTTPException(404,'Пользователь не найден')
+    if not d.scalar(select(Block).where(Block.actor_id==u.id,Block.target_id==user_id)):
+        d.add(Block(actor_id=u.id,target_id=user_id))
+    for f in d.scalars(select(Friendship).where(((Friendship.from_id==u.id)&(Friendship.to_id==user_id))|((Friendship.from_id==user_id)&(Friendship.to_id==u.id)))).all():d.delete(f)
+    d.commit();await emit([u.id,user_id],{'type':'friends_changed'})
+    return {'ok':True}
+
+@app.post('/api/dm/{user_id}')
+def open_dm(user_id:str,u:User=Depends(authed),d:Session=Depends(db)):
+    if not is_friend(d,u.id,user_id) or blocked(d,u.id,user_id):raise HTTPException(403,'Сначала добавьте пользователя в друзья')
+    a,b=sorted([u.id,user_id]);cid='DM_'+a+'_'+b
+    c=d.get(Chat,cid)
+    if not c:
+        c=Chat(id=cid,is_group=False,owner_id=u.id)
+        d.add(c);d.flush()
+        d.add_all([Member(chat_id=cid,user_id=a),Member(chat_id=cid,user_id=b)])
+        d.commit()
+    return {'id':cid}
+
+@app.post('/api/groups')
+async def create_group(body:NewChat,u:User=Depends(authed),d:Session=Depends(db)):
+    participants={u.id}
+    for user_id in body.members:
+        if not is_friend(d,u.id,user_id) or blocked(d,u.id,user_id):raise HTTPException(403,f'Участник {user_id} не в друзьях')
+        participants.add(user_id)
+    cid=str(uuid.uuid4())
+    d.add(Chat(id=cid,name=body.name.strip(),is_group=True,owner_id=u.id));d.flush()
+    for user_id in participants:d.add(Member(chat_id=cid,user_id=user_id,role='owner' if user_id==u.id else 'member'))
+    d.commit();await emit(participants,{'type':'chats_changed'})
+    return {'id':cid}
+
+@app.post('/api/groups/{chat_id}/members')
+async def add_group_member(chat_id:str,body:MemberAdd,u:User=Depends(authed),d:Session=Depends(db)):
+    m=get_member(d,chat_id,u.id);c=d.get(Chat,chat_id)
+    if not c.is_group or m.role not in ('owner','admin'):raise HTTPException(403,'Недостаточно прав')
+    if not is_friend(d,u.id,body.user_id) or blocked(d,u.id,body.user_id):raise HTTPException(403,'Участник должен быть вашим другом')
+    if not d.scalar(select(Member).where(Member.chat_id==chat_id,Member.user_id==body.user_id)):
+        d.add(Member(chat_id=chat_id,user_id=body.user_id));d.commit()
+    await emit(members_of(d,chat_id),{'type':'chats_changed'})
+    return {'ok':True}
+
+@app.delete('/api/groups/{chat_id}/members/{user_id}')
+async def remove_group_member(chat_id:str,user_id:str,u:User=Depends(authed),d:Session=Depends(db)):
+    me=get_member(d,chat_id,u.id);c=d.get(Chat,chat_id)
+    if not c.is_group:raise HTTPException(400,'Не группа')
+    if user_id!=u.id and me.role not in ('owner','admin'):raise HTTPException(403,'Недостаточно прав')
+    target=get_member(d,chat_id,user_id)
+    if target.role=='owner':raise HTTPException(403,'Владелец не может выйти до передачи прав')
+    if target.role=='admin' and me.role!='owner' and user_id!=u.id:raise HTTPException(403,'Только владелец может удалить администратора')
+    d.delete(target);d.commit()
+    await emit(members_of(d,chat_id)+[user_id],{'type':'chats_changed'})
+    return {'ok':True}
+
+@app.post('/api/groups/{chat_id}/admins/{user_id}')
+async def promote_admin(chat_id:str,user_id:str,u:User=Depends(authed),d:Session=Depends(db)):
+    me=get_member(d,chat_id,u.id)
+    if me.role!='owner' or not d.get(Chat,chat_id).is_group:raise HTTPException(403,'Только владелец группы')
+    target=get_member(d,chat_id,user_id);target.role='admin';d.commit()
+    return {'ok':True}
+
+@app.get('/api/chats')
+def chats(u:User=Depends(authed),d:Session=Depends(db)):
+    memberships=d.scalars(select(Member).where(Member.user_id==u.id)).all()
+    result=[]
+    for m in memberships:
+        c=d.get(Chat,m.chat_id)
+        ms=d.scalar(select(Message).where(Message.chat_id==c.id).order_by(Message.sent_at.desc()).limit(1))
+        users=list(d.scalars(select(Member.user_id).where(Member.chat_id==c.id)).all())
+        peer = d.get(User,next((v for v in users if v!=u.id),u.id)) if not c.is_group else None
+        unread=d.scalar(select(func.count(Message.id)).where(Message.chat_id==c.id,Message.user_id!=u.id,Message.sent_at>m.read_at)) or 0
+        result.append({'id':c.id,'name':c.name if c.is_group else (peer.nick if peer else 'Диалог'),
+                'avatar':'♣' if c.is_group else (peer.avatar if peer else '◉'),
+                'is_group':c.is_group,'peer_id':peer.id if peer else None,
+                'online':bool(peer and peer.id in sockets and sockets[peer.id] and peer.status!='invisible'),
+                'members':users,'read_states':{v.user_id:v.read_at.isoformat()+'Z' for v in d.scalars(select(Member).where(Member.chat_id==c.id)).all()},'role':m.role,'unread':unread,
+                'last':msg_json(d,ms) if ms else None})
+    return sorted(result,key=lambda x:(x['last']['sent_at'] if x['last'] else ''),reverse=True)
+
+@app.get('/api/chats/{chat_id}/messages')
+def messages(chat_id:str,before:str|None=None,search:str|None=None,u:User=Depends(authed),d:Session=Depends(db)):
+    get_member(d,chat_id,u.id)
+    q=select(Message).where(Message.chat_id==chat_id)
+    if before:
+        try: at=datetime.fromisoformat(before.replace('Z','+00:00')).replace(tzinfo=None)
+        except ValueError:raise HTTPException(400,'Неверная дата')
+        q=q.where(Message.sent_at<at)
+    if search:q=q.where(Message.body.ilike('%'+search[:100].replace('%','\\%').replace('_','\\_')+'%',escape='\\'))
+    arr=list(d.scalars(q.order_by(Message.sent_at.desc()).limit(100)).all())
+    return [msg_json(d,m) for m in reversed(arr)]
+
+@app.post('/api/chats/{chat_id}/messages')
+async def send_message(chat_id:str,body:NewMessage,u:User=Depends(authed),d:Session=Depends(db)):
+    get_member(d,chat_id,u.id)
+    limit('msg:'+u.id,40,60)
+    c=d.get(Chat,chat_id)
+    if not c.is_group:
+        peer=next((x for x in members_of(d,chat_id) if x!=u.id),None)
+        if peer and blocked(d,u.id,peer):raise HTTPException(403,'Сообщения недоступны')
+    if not body.body.strip() and not body.attachment_id:raise HTTPException(400,'Пустое сообщение')
+    if body.reply_to:
+        reply=d.get(Message,body.reply_to)
+        if not reply or reply.chat_id!=chat_id:raise HTTPException(400,'Неверное сообщение для ответа')
+    if body.attachment_id:
+        attachment=d.get(Attachment,body.attachment_id)
+        if not attachment or attachment.chat_id!=chat_id or attachment.owner_id!=u.id:
+            raise HTTPException(403,'Вложение недоступно')
+    m=Message(id=str(uuid.uuid4()),chat_id=chat_id,user_id=u.id,body=body.body.strip(),reply_to=body.reply_to,attachment_id=body.attachment_id)
+    d.add(m);d.commit()
+    payload=msg_json(d,m)
+    await emit(members_of(d,chat_id),{'type':'message','message':payload})
+    return payload
+
+@app.patch('/api/messages/{message_id}')
+async def edit_message(message_id:str,body:EditMessage,u:User=Depends(authed),d:Session=Depends(db)):
+    m=d.get(Message,message_id)
+    if not m:raise HTTPException(404,'Сообщение не найдено')
+    get_member(d,m.chat_id,u.id)
+    if m.user_id!=u.id or m.deleted:raise HTTPException(403,'Можно редактировать только свои сообщения')
+    m.body=body.body;m.edited_at=now();d.commit()
+    await emit(members_of(d,m.chat_id),{'type':'message_updated','message':msg_json(d,m)})
+    return msg_json(d,m)
+
+@app.delete('/api/messages/{message_id}')
+async def delete_message(message_id:str,u:User=Depends(authed),d:Session=Depends(db)):
+    m=d.get(Message,message_id)
+    if not m:raise HTTPException(404,'Сообщение не найдено')
+    get_member(d,m.chat_id,u.id)
+    if m.user_id!=u.id:raise HTTPException(403,'Можно удалять только свои сообщения')
+    m.body='';m.deleted=True;m.attachment_id=None;d.commit()
+    await emit(members_of(d,m.chat_id),{'type':'message_updated','message':msg_json(d,m)})
+    return {'ok':True}
+
+@app.post('/api/chats/{chat_id}/read')
+async def read_chat(chat_id:str,u:User=Depends(authed),d:Session=Depends(db)):
+    m=get_member(d,chat_id,u.id);m.read_at=now();d.commit()
+    await emit(members_of(d,chat_id),{'type':'read','chat_id':chat_id,'user_id':u.id,'at':m.read_at.isoformat()+'Z'})
+    return {'ok':True}
+
+# Uploads: limit size, whitelist extension AND inspect signature for images; do not execute/unpack or serve as HTML.
+ALLOWED={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp',
+         '.pdf':'application/pdf','.txt':'text/plain','.csv':'text/csv','.zip':'application/zip'}
+def valid_magic(ext:str,data:bytes)->bool:
+    if ext=='.png':return data.startswith(b'\x89PNG\r\n\x1a\n')
+    if ext in ('.jpg','.jpeg'):return data.startswith(b'\xff\xd8\xff')
+    if ext=='.gif':return data.startswith((b'GIF87a',b'GIF89a'))
+    if ext=='.webp':return data.startswith(b'RIFF') and data[8:12]==b'WEBP'
+    if ext=='.pdf':return data.startswith(b'%PDF-')
+    if ext=='.zip':return data.startswith(b'PK\x03\x04')
+    return True
+
+@app.post('/api/chats/{chat_id}/attachments')
+async def upload(chat_id:str,file:UploadFile=File(...),u:User=Depends(authed),d:Session=Depends(db)):
+    get_member(d,chat_id,u.id);limit('upload:'+u.id,20,3600)
+    name=Path((file.filename or 'file').replace('\\','/')).name[:160]
+    ext=Path(name).suffix.lower()
+    if ext not in ALLOWED:raise HTTPException(415,'Разрешены PNG, JPG, GIF, WEBP, PDF, TXT, CSV, ZIP')
+    data=await file.read(12*1024*1024+1)
+    if not data or len(data)>12*1024*1024:raise HTTPException(413,'Файл должен быть от 1 байта до 12 МБ')
+    if not valid_magic(ext,data):raise HTTPException(415,'Содержимое файла не соответствует формату')
+    fid=str(uuid.uuid4());path=UPLOAD_DIR/(fid+ext)
+    path.write_bytes(data)
+    a=Attachment(id=fid,chat_id=chat_id,owner_id=u.id,display_name=name,content_type=ALLOWED[ext],file_path=str(path),size=len(data))
+    d.add(a);d.commit()
+    return {'id':fid,'name':name,'size':len(data),'type':ALLOWED[ext]}
+
+@app.get('/api/attachments/{attachment_id}')
+def download(attachment_id:str,u:User=Depends(authed),d:Session=Depends(db)):
+    a=d.get(Attachment,attachment_id)
+    if not a:raise HTTPException(404,'Файл не найден')
+    get_member(d,a.chat_id,u.id)
+    path=Path(a.file_path)
+    if not path.is_file():raise HTTPException(404,'Файл на сервере отсутствует')
+    return FileResponse(path,media_type='application/octet-stream',filename=a.display_name,
+            headers={'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'})
+
+@app.websocket('/ws')
+async def websocket(ws:WebSocket):
+    await ws.accept()
+    uid=None
+    try:
+        auth=await asyncio.wait_for(ws.receive_json(),timeout=8)
+        if not isinstance(auth,dict) or auth.get('type')!='auth' or not isinstance(auth.get('token'),str):
+            await ws.close(code=1008);return
+        with SessionLocal() as d:
+            sess=d.get(SessionToken,hash_token(auth['token']))
+            if not sess or sess.expires_at<now():await ws.close(code=1008);return
+            uid=sess.user_id
+            friends=[f.to_id if f.from_id==uid else f.from_id for f in d.scalars(select(Friendship).where(Friendship.state=='accepted',((Friendship.from_id==uid)|(Friendship.to_id==uid)))).all()]
+            user=d.get(User,uid)
+            show=user.status!='invisible'
+        sockets[uid].add(ws)
+        await ws.send_json({'type':'authenticated'})
+        if show:await emit(friends,{'type':'presence','user_id':uid,'online':True})
+        while True:
+            event=await ws.receive_json()
+            if event.get('type')=='ping':await ws.send_json({'type':'pong'})
+            if event.get('type')=='typing':
+                cid=event.get('chat_id')
+                with SessionLocal() as d:
+                    if isinstance(cid,str) and d.scalar(select(Member).where(Member.chat_id==cid,Member.user_id==uid)):
+                        await emit([x for x in members_of(d,cid) if x!=uid],{'type':'typing','chat_id':cid,'user_id':uid})
+    except (WebSocketDisconnect, asyncio.TimeoutError,ValueError,RuntimeError):pass
+    finally:
+        if uid:
+            sockets[uid].discard(ws)
+            if not sockets[uid]:
+                with SessionLocal() as d:
+                    fs=d.scalars(select(Friendship).where(Friendship.state=='accepted',((Friendship.from_id==uid)|(Friendship.to_id==uid)))).all()
+                    friends=[f.to_id if f.from_id==uid else f.from_id for f in fs]
+                await emit(friends,{'type':'presence','user_id':uid,'online':False})
