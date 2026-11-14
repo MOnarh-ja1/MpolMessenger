@@ -1,7 +1,17 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, x => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
-const storage = {get token(){return localStorage.getItem('mpol_token')||''},set token(v){v?localStorage.setItem('mpol_token',v):localStorage.removeItem('mpol_token')}};
+// Each EXE window must have its OWN login. localStorage shared a bearer token
+// across all Edge/Chrome app windows and silently mixed account identities.
+const legacyToken=localStorage.getItem('mpol_token');
+if(!sessionStorage.getItem('mpol_token')&&legacyToken){
+ sessionStorage.setItem('mpol_token',legacyToken);
+}
+localStorage.removeItem('mpol_token');
+const storage = {
+ get token(){return sessionStorage.getItem('mpol_token')||''},
+ set token(v){if(v)sessionStorage.setItem('mpol_token',v);else sessionStorage.removeItem('mpol_token')}
+};
 const state = {me:null,chats:[],friends:[],requests:[],requestsLoaded:false,messages:[],active:null,tab:'chats',chatFilter:'all',ws:null,retry:0,reply:null,register:false,typingTimer:0,
   notif:localStorage.getItem('mpol_notify')==='1',sound:localStorage.getItem('mpol_sound')!=='0',scale:Number(localStorage.getItem('mpol_scale')||'100')};
 function toast(text){const e=document.createElement('div');e.className='toast';e.textContent=text;$('toastZone').append(e);setTimeout(()=>e.remove(),4000)}
@@ -30,7 +40,17 @@ function showApp(){ $('authScreen').classList.add('hidden');$('mainScreen').clas
 // No window-level globals exposed: every on-screen action binds a real handler.
 async function serverHealth(){try{const r=await api('/health');$('serverStatus').textContent=r.ok?(r.temporary_storage?'Тестовый онлайн · данные могут исчезнуть':r.durable_database?'Онлайн · сообщения сохраняются':'Сервер доступен'):'Сервер не отвечает';$('serverStatus').previousElementSibling.classList.toggle('good',!!r.ok)}catch{$('serverStatus').textContent='Сервер недоступен';$('serverStatus').previousElementSibling.classList.remove('good')}}
 async function startup(){try{if(storage.token){state.me=await api('/me');showMain();return}}catch{storage.token=''}showLogin()}
-async function showMain(){showApp();state.requests=[];state.requestsLoaded=false;updateOwnAvatar();$('myAccountId').textContent=state.me.id;applyScale();await refreshAll();wsConnect();renderTab('chats')}
+async function showMain(){
+ // The /me response is authoritative; never infer account identity from a
+ // developer badge, previous window, nickname, or another shared login.
+ state.me=await api('/me');
+ state.active=null;state.messages=[];state.chats=[];state.friends=[];
+ $('emptyChat').classList.remove('hidden');$('openedChat').classList.add('hidden');
+ showApp();state.requests=[];state.requestsLoaded=false;updateOwnAvatar();
+ $('myAccountId').textContent=state.me.id;
+ $('activeAccountLabel').textContent=state.me.nick+' · '+state.me.id;
+ applyScale();await refreshAll();wsConnect();renderTab('chats');
+}
 function setFriendRequests(req){
  const existing=new Set(state.requests.map(r=>r.request_id));
  const incoming=state.requestsLoaded?req.filter(r=>!existing.has(r.request_id)):[];
@@ -49,9 +69,10 @@ let refreshingAll=null;
 async function refreshAll(){
  if(!state.me)return;
  if(refreshingAll)return refreshingAll;
+ const accountId=state.me.id;
  refreshingAll=(async()=>{try{
   const [chats,friends,req]=await Promise.all([api('/chats'),api('/friends'),api('/friends/requests')]);
-  if(!state.me)return;
+  if(state.me?.id!==accountId)return;
   state.chats=chats;state.friends=friends;setFriendRequests(req);renderList();
   if(state.active){const updated=chats.find(c=>c.id===state.active.id);if(updated){state.active=updated;updateHeader()}}
  }catch(e){if(state.me)toast(errorText(e))}})().finally(()=>{refreshingAll=null});
@@ -121,13 +142,16 @@ function updateHeader(){if(!state.active)return;const c=state.active;
 }
 function renderMessages(){const root=$('messages');root.replaceChildren();let lastDay='';const c=state.active;
  for(const m of state.messages){if(m.deleted)continue;const day=new Date(m.sent_at).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});if(day!==lastDay){const label=document.createElement('div');label.className='day-divider';label.textContent=day;root.append(label);lastDay=day}
-  const mine=m.user_id===state.me.id;let reply='';if(m.reply_to){const original=state.messages.find(x=>x.id===m.reply_to);reply=`<div class="msg-reply">↪ ${esc(original?.body?.slice(0,80)||'Ответ на сообщение')}</div>`}
+  const mine=String(m.user_id)===String(state.me.id);let reply='';if(m.reply_to){const original=state.messages.find(x=>x.id===m.reply_to);reply=`<div class="msg-reply">↪ ${esc(original?.body?.slice(0,80)||'Ответ на сообщение')}</div>`}
   const voice=!!m.attachment&&(['audio/webm','audio/ogg'].includes(m.attachment.type));
   const file=voice?'<button class="msg-file voice-file" data-audio="'+esc(m.attachment.id)+'">▶ Голосовое · '+Math.round(m.attachment.size/1024)+' КБ</button>':m.attachment?'<button class="msg-file" data-file="'+esc(m.attachment.id)+'">📎 '+esc(m.attachment.name)+' ('+Math.round(m.attachment.size/1024)+' КБ)</button>':'';
   const reacts=(m.reactions||[]).map(r=>'<button type="button" data-react="'+esc(r.emoji)+'" class="'+((r.users||[]).includes(state.me.id)?'my-reaction':'')+'">'+esc(r.emoji)+' '+r.count+'</button>').join('');
   const reactionHtml=reacts?'<div class="reaction-strip">'+reacts+'</div>':'';
-  const row=document.createElement('div');row.className='msg-row'+(mine?' mine':'');
-  row.innerHTML=`<div class="mini-avatar">${m.avatar==='📷'?'<img class="avatar-photo" src="/api/avatars/'+encodeURIComponent(m.user_id)+'" alt="Аватар">':esc(m.avatar)}</div><div class="msg-bubble">${!mine&&c?.is_group?`<div class="msg-sender">${esc(m.nick)}</div>`:''}${reply}<div class="msg-text">${m.deleted?'Сообщение удалено':esc(m.body)}</div>${file}${reactionHtml}<div class="msg-meta">${m.edited_at?'изм. · ':''}${timestr(m.sent_at)}${mine?(c?.read_states&&Object.entries(c.read_states).some(([uid,t])=>uid!==state.me.id&&new Date(t)>=new Date(m.sent_at))?' · ✓✓':' · ✓'):''}</div></div><div class="msg-actions">${!m.deleted?'<button data-action="reply" title="Ответить">↶</button><button data-action="react" title="Реакция">♡</button><button data-action="copy" title="Копировать">⧉</button>':''}${mine&&!m.deleted?'<button data-action="edit" title="Редактировать">✎</button><button data-action="delete" title="Удалить">×</button>':''}</div>`;
+  const row=document.createElement('div');
+  row.className='msg-row '+(mine?'mine':'theirs');
+  row.dataset.authorId=String(m.user_id);row.dataset.messageId=String(m.id);
+  row.setAttribute('aria-label',mine?'Ваше сообщение':'Сообщение от '+(m.nick||'пользователя'));
+  row.innerHTML=`<div class="mini-avatar">${m.avatar==='📷'?'<img class="avatar-photo" src="/api/avatars/'+encodeURIComponent(m.user_id)+'" alt="Аватар">':esc(m.avatar)}</div><div class="msg-bubble">${!mine?`<div class="msg-sender">${esc(m.nick||'Пользователь')}</div>`:'<div class="msg-sender msg-own-label">Вы</div>'}${reply}<div class="msg-text">${m.deleted?'Сообщение удалено':esc(m.body)}</div>${file}${reactionHtml}<div class="msg-meta">${m.edited_at?'изм. · ':''}${timestr(m.sent_at)}${mine?(c?.read_states&&Object.entries(c.read_states).some(([uid,t])=>uid!==state.me.id&&new Date(t)>=new Date(m.sent_at))?' · ✓✓':' · ✓'):''}</div></div><div class="msg-actions">${!m.deleted?'<button data-action="reply" title="Ответить">↶</button><button data-action="react" title="Реакция">♡</button><button data-action="copy" title="Копировать">⧉</button>':''}${mine&&!m.deleted?'<button data-action="edit" title="Редактировать">✎</button><button data-action="delete" title="Удалить">×</button>':''}</div>`;
   row.querySelectorAll('[data-action]').forEach(btn=>btn.onclick=()=>messageAction(btn.dataset.action,m));
   row.querySelectorAll('[data-react]').forEach(btn=>btn.onclick=()=>setReaction(m,btn.dataset.react)); 
   row.querySelector('[data-audio]')?.addEventListener('click',e=>playVoiceAttachment(m.attachment,e.currentTarget));
@@ -169,7 +193,7 @@ async function attach(){if(!state.active)return;$('fileInput').click()}
 async function uploadFile(file){if(!file||!state.active)return;if(file.size>12*1024*1024){toast('Максимальный размер файла — 12 МБ');return false}const data=new FormData();data.append('file',file);try{toast('Загрузка файла…');const a=await api('/chats/'+encodeURIComponent(state.active.id)+'/attachments',{method:'POST',body:data,form:true});await api('/chats/'+encodeURIComponent(state.active.id)+'/messages',{method:'POST',body:{body:'',attachment_id:a.id}});await loadMessages();await refreshAll();toast('Файл отправлен');$('fileInput').value='';return true}catch(e){toast(errorText(e));return false}}
 function wsConnect(){if(!storage.token||!state.me)return;try{const proto=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(proto+'//'+location.host+'/ws');state.ws=ws;
  ws.onopen=()=>{state.retry=0;ws.send(JSON.stringify({type:'auth',token:storage.token}))};
- ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch{return}
+ ws.onmessage=async e=>{if(state.ws!==ws||!state.me)return;let m;try{m=JSON.parse(e.data)}catch{return}
   if(m.type==='call_signal'){onCallSignal(m);return}
   if(m.type==='authenticated'||m.type==='friend_request'){refreshAll().catch(()=>{});return}
   if(m.type==='message'){if(m.message.user_id!==state.me.id){notifyNewMessage(m.message)}if(state.active?.id===m.message.chat_id){if(!state.messages.some(x=>x.id===m.message.id)){state.messages.push(m.message);renderMessages()}api('/chats/'+state.active.id+'/read',{method:'POST'}).catch(()=>{})}refreshAll().catch(()=>{})}
@@ -219,7 +243,13 @@ function chatDetails(){if(!state.active)return;const c=state.active;
  $('addMemberBtn')?.addEventListener('click',async()=>{try{await api('/groups/'+c.id+'/members',{method:'POST',body:{user_id:$('addMemberSelect').value}});closeModal();await refreshAll();toast('Участник добавлен')}catch(e){toast(errorText(e))}});
  $('leaveGroup')?.addEventListener('click',async()=>{if(!confirm('Покинуть группу?'))return;try{await api('/groups/'+c.id+'/members/'+state.me.id,{method:'DELETE'});closeModal();state.active=null;$('openedChat').classList.add('hidden');$('emptyChat').classList.remove('hidden');await refreshAll()}catch(e){toast(errorText(e))}})
 }
-function applyScale(){document.documentElement.style.zoom=state.scale+'%'}
+function applyScale(){
+ // Zooming <html> caused vh-based panels to extend beyond the bottom of
+ // maximized/F11 windows. Scale text only; keep viewport geometry at 1:1.
+ document.documentElement.style.zoom='1';
+ const factor=Math.max(0.85,Math.min(1.25,Number(state.scale||100)/100));
+ document.documentElement.style.setProperty('--mpol-text-scale',String(factor));
+}
 function openSettings(){modal('Профиль и настройки',`<div class="profile-hero"><div class="profile-hero-avatar">${state.me.avatar==='📷'?'<img src="/api/avatars/'+encodeURIComponent(state.me.id)+'?t='+Date.now()+'" alt="Аватар">':esc(state.me.avatar||state.me.nick[0])}</div><div class="profile-hero-name"><h3>${esc(state.me.nick)}</h3><p>${esc(state.me.description||'Мой профиль MPOL')}</p>${state.me.is_developer?'<span class="developer-tag">Разработчик</span>':''}</div></div><section class="settings-panel"><h3>Мой аккаунт</h3><div class="profile-id-card"><div class="profile-id-caption">ВАШ ID · ДЛЯ ПОИСКА В ДРУЗЬЯХ</div><div class="profile-id-row"><code>${esc(state.me.id)}</code><button id="copyProfileId" type="button">Скопировать</button></div></div></section><section class="settings-panel"><h3>Редактирование профиля</h3><label>Никнейм<input id="profileNick" value="${esc(state.me.nick)}" maxlength="48"></label><label>О себе<textarea id="profileDescription" maxlength="260" rows="3">${esc(state.me.description||'')}</textarea></label><label>Аватар (символ)<input id="profileAvatar" value="${esc(state.me.avatar)}" maxlength="8"></label>
  <label>Фотография профиля (PNG, JPG или WEBP до 800 КБ)<input id="profilePhoto" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="uploadProfilePhoto" class="button outlined">Загрузить фото профиля</button>
  <label>Сетевой статус<select id="profileStatus"><option value="online">В сети</option><option value="away">Отошёл</option><option value="dnd">Не беспокоить</option><option value="invisible">Невидимка</option></select></label><button class="button" id="saveProfile">Сохранить профиль</button></section><section class="settings-panel"><h3>Уведомления и интерфейс</h3>
@@ -256,7 +286,7 @@ function changePassword(){modal('Изменить пароль',`<label>Теку
 async function configServer(){if(location.protocol==='https:' && !['localhost','127.0.0.1'].includes(location.hostname)){modal('Сервер MPOL','<p>Вы подключены к общему тестовому серверу MPOL. Данные могут исчезнуть после перезапуска сервера.</p>');return;}let data={url:''};try{const r=await fetch('/__config');data=await r.json()}catch{};
  modal('Подключение к серверу',`<p>Для общения через интернет обоим пользователям нужен один и тот же доступный сервер MPOL. Для локальной проверки используйте <strong>http://127.0.0.1:8000</strong>.</p><label>Адрес сервера<input id="serverUrl" placeholder="https://chat.example.com" value="${esc(data.url||'')}"></label><button class="button" id="saveServer">Сохранить и переподключиться</button><p class="secondary">В интернете используйте HTTPS с настоящим сертификатом. Указанный сервер может получать ваши сообщения.</p>`);
  $('saveServer').onclick=async()=>{try{const r=await fetch('/__config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('serverUrl').value.trim()})});const x=await r.json();if(!r.ok)throw Error(x.error||'Ошибка адреса');storage.token='';location.reload()}catch(e){toast(errorText(e))}}}
-async function signout(send){if(send)api('/auth/logout',{method:'POST'}).catch(()=>{});storage.token='';state.me=null;state.active=null;state.requests=[];state.requestsLoaded=false;state.ws?.close();state.ws=null;closeModal();showLogin()}
+async function signout(send){if(send)api('/auth/logout',{method:'POST'}).catch(()=>{});if(typeof currentCall!=='undefined'&&currentCall)endCall(true);storage.token='';state.me=null;state.active=null;state.requests=[];state.requestsLoaded=false;state.ws?.close();state.ws=null;closeModal();showLogin()}
 function openSearch(){findFriends()}
 $('toggleAuth').onclick=()=>{state.register=!state.register;$('registerFields').classList.toggle('hidden',!state.register);$('confirmFields').classList.toggle('hidden',!state.register);$('authSubtitle').textContent=state.register?'Создайте аккаунт и найдите друзей.':'Добро пожаловать. Войдите в свой аккаунт.';$('authSubmit').firstChild.textContent=state.register?'Зарегистрироваться ':'Войти ';$('toggleAuth').innerHTML=state.register?'Уже есть аккаунт? <b>Войти</b>':'Нет аккаунта? <b>Создать аккаунт</b>';$('password').setAttribute('autocomplete',state.register?'new-password':'current-password')};
 $('authForm').onsubmit=async e=>{e.preventDefault();$('authError').textContent='';$('authSubmit').disabled=true;try{const login=$('login').value.trim(),password=$('password').value;if(state.register&&password!==$('password2').value)throw Error('Пароли не совпадают');const body=state.register?{nick:$('nick').value,login,password,email:$('email').value||null}:{login,password};const data=await api(state.register?'/auth/register':'/auth/login',{method:'POST',body});storage.token=data.token;state.me=data.user;await showMain()}catch(e){$('authError').textContent=errorText(e)}finally{$('authSubmit').disabled=false}};
