@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' wss: ws://127.0.0.1:* ws://localhost:*; object-src 'none'; base-uri 'none'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' wss: ws://127.0.0.1:* ws://localhost:*; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'"/>
 <title>MPOL Messenger</title><link rel="icon" href="/icon.png"><link rel="stylesheet" href="/style.css"></head>
 <body>
 <div class="ambient"></div>
@@ -14,18 +14,21 @@
       <div id="confirmFields" class="hidden"><label>Повторите пароль<input id="password2" type="password" placeholder="Подтвердите пароль" autocomplete="new-password"></label><label>Email (необязательно)<input id="email" type="email" placeholder="name@example.com" autocomplete="email"></label></div>
       <p id="authError" class="error"></p><button id="authSubmit" class="button primary" type="submit">Войти <span>→</span></button>
     </form><button id="forgotPassword" class="text-button">Забыли пароль?</button><button id="toggleAuth" class="text-button">Нет аккаунта? <b>Создать аккаунт</b></button>
-    <div class="server-note"><span class="live-dot"></span><span id="serverStatus">Проверка сервера…</span><button id="configureServer">Настроить</button></div>
+    <div class="server-note"><span class="live-dot"></span><span id="serverStatus">Проверка сервера…</span><button id="configureServer" class="hidden">Настроить</button></div>
   </div><div class="auth-footer">MPOL MESSENGER <span>© 2026</span></div>
 </section>
 <div id="mainScreen" class="app hidden">
   <aside class="rail"><div class="rail-logo">M<span>.</span></div><div class="rail-stack">
     <button class="rail-btn active" data-tab="chats" title="Сообщения"><span>▤</span></button>
     <button class="rail-btn" data-tab="friends" title="Друзья"><span>♧</span></button>
-    <button class="rail-btn" data-tab="groups" title="Группы"><span>▦</span></button>
+    <button class="rail-btn" data-tab="saved" title="Избранное"><span>☆</span></button>
     <button class="rail-btn" data-tab="notifications" title="Заявки"><span>♢</span><span id="requestDot" class="request-badge hidden" aria-live="polite" aria-label="Заявки в друзья"></span></button>
   </div><div class="rail-bottom"><button class="rail-btn" data-tab="settings" title="Настройки"><span>⚙</span></button><button id="myProfile" title="Мой профиль" class="self-avatar">M</button></div></aside>
   <aside class="chat-list-panel">
-    <div class="list-header"><div class="overline">MPOL / MESSENGER</div><h2 id="listTitle">Сообщения</h2><p id="listSubtitle">На связи с теми, кто важен</p></div>
+    <div class="list-header"><div class="overline">MPOL BLACK</div><h2 id="listTitle">Сообщения</h2><p id="listSubtitle">На связи с теми, кто важен</p></div>
+    <div class="chat-filters" id="chatFilters">
+      <button data-filter="all" class="active">Все</button><button data-filter="direct">Личные</button><button data-filter="groups">Группы</button><button data-filter="unread">Непрочит.</button><button data-filter="archive">Архив</button>
+    </div>
     <div class="list-search"><span>⌕</span><input id="listSearch" placeholder="Поиск…" autocomplete="off"></div>
     <div class="action-row"><button id="newMessage" class="soft-action">+ Новый чат</button><button id="createGroup" class="round-action" title="Создать группу">▦</button></div>
     <div id="chatList" class="chat-list"></div>
@@ -37,17 +40,29 @@
   </aside>
   <main class="conversation">
     <div id="emptyChat" class="empty-state"><div class="empty-logo">M<span>.</span></div><h2>Ваше пространство общения</h2><p>Выберите диалог или найдите друга по ID, чтобы начать переписку.</p><button id="emptyFind" class="button outlined">Найти друзей <span>↗</span></button></div>
-    <div id="openedChat" class="opened-chat hidden"><header class="conv-header"><div class="conv-user"><div class="avatar" id="chatAvatar">◉</div><div><h3 id="chatName">Имя</h3><span id="chatPresence">Личные сообщения</span></div></div><div class="conv-top-actions"><button id="searchMessages" title="Поиск в переписке">⌕</button><button id="chatInfo" title="Информация">•••</button></div></header>
+    <div id="openedChat" class="opened-chat hidden"><header class="conv-header"><div class="conv-user"><div class="avatar" id="chatAvatar">◉</div><div><h3 id="chatName">Имя</h3><span id="chatPresence">Личные сообщения</span></div></div><div class="conv-top-actions"><button id="voiceCall" title="Голосовой звонок">☎</button><button id="videoCall" title="Видеозвонок">▣</button><button id="archiveChat" title="В архив">⇣</button><button id="searchMessages" title="Поиск в переписке">⌕</button><button id="chatInfo" title="Информация">•••</button></div></header>
+      <div id="emojiPalette" class="emoji-palette hidden" aria-label="Выбор эмодзи"></div>
       <div id="messageSearchBar" class="message-search hidden"><input id="messageSearchInput" placeholder="Поиск по истории сообщений…"><button id="messageSearchClear">✕</button></div>
       <div id="messages" class="messages"></div><div id="typingIndicator" class="typing-indicator"></div><div id="replyChip" class="reply-chip hidden"><span id="replyText"></span><button id="clearReply">×</button></div>
-      <form id="composer" class="composer"><input id="fileInput" type="file" class="hidden" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.csv,.zip"/>
+      <form id="composer" class="composer"><input id="fileInput" type="file" class="hidden" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.csv,.zip,.webm,.ogg"/>
         <button type="button" id="attachBtn" title="Прикрепить файл" class="composer-icon">＋</button><input id="messageInput" maxlength="4000" placeholder="Написать сообщение…" autocomplete="off"/>
-        <button type="button" id="emojiBtn" title="Эмодзи" class="composer-icon">☺</button><button id="sendBtn" type="submit" title="Отправить" class="send-button">➜</button>
+        <button type="button" id="voiceBtn" title="Записать голосовое сообщение" class="composer-icon">🎙</button><button type="button" id="emojiBtn" title="Эмодзи" class="composer-icon">☺</button><button id="sendBtn" type="submit" title="Отправить" class="send-button">➜</button>
       </form><div class="composer-foot">Enter — отправить <span>•</span> Максимум 12 МБ на файл</div>
     </div>
   </main>
 </div>
 <div id="modalLayer" class="modal-layer hidden"><div class="modal-backdrop" id="modalBackdrop"></div><div class="modal" role="dialog" aria-modal="true"><div class="modal-head"><h2 id="modalTitle">Заголовок</h2><button id="closeModal">✕</button></div><div id="modalContent" class="modal-body"></div></div></div>
-<div id="toastZone" aria-live="polite"></div>
-<script src="/app.js" defer></script>
+<section id="callLayer" class="call-layer hidden" role="dialog" aria-modal="true">
+   <div class="call-card">
+    <div class="call-tag">MPOL · ЗВОНОК</div>
+    <h2 id="callTitle">Вызов</h2><p id="callStatus">Соединение…</p>
+    <div class="call-video-area"><video id="remoteVideo" autoplay playsinline></video><video id="localVideo" autoplay muted playsinline></video></div>
+    <audio id="remoteAudio" autoplay></audio><div id="callTimer">00:00</div>
+    <div class="call-accept-controls"><button id="acceptCall">Принять</button><button id="declineCall">Отклонить</button></div>
+    <div class="call-active-controls hidden"><button id="muteMic">Микрофон</button><button id="toggleCamera">Камера</button><button id="shareScreen">Экран</button><button id="endCall" class="danger-btn">Завершить</button></div>
+    <label class="call-volume-label">Громкость <input id="callVolume" type="range" min="0" max="100" value="100"/></label>
+   </div>
+ </section>
+ <div id="toastZone" aria-live="polite"></div>
+<script src="/voice.js" defer></script><script src="/calls.js" defer></script><script src="/app.js" defer></script>
 </body></html>

@@ -4,6 +4,7 @@ Use SQLite for a local demo, PostgreSQL for a hosted deployment.
 from __future__ import annotations
 import asyncio
 import hashlib
+import json
 import hmac
 import smtplib
 from email.message import EmailMessage
@@ -130,6 +131,24 @@ class AttachmentBlob(Base):
     attachment_id: Mapped[str] = mapped_column(ForeignKey('attachments.id'), primary_key=True)
     data: Mapped[bytes] = mapped_column(LargeBinary)
 
+
+class ChatArchive(Base):
+    __tablename__ = 'chat_archives'
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey('chats.id'), primary_key=True)
+
+class MessageReaction(Base):
+    __tablename__ = 'message_reactions'
+    message_id: Mapped[str] = mapped_column(ForeignKey('messages.id'), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), primary_key=True)
+    emoji: Mapped[str] = mapped_column(String(16))
+
+class ProfilePhoto(Base):
+    __tablename__ = 'profile_photos'
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), primary_key=True)
+    mime_type: Mapped[str] = mapped_column(String(30))
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+
 Base.metadata.create_all(engine)
 
 class Register(BaseModel):
@@ -142,6 +161,8 @@ class Login(BaseModel):
     password: str
 class FriendRequest(BaseModel): target_id: str
 class FriendRespond(BaseModel): accept: bool
+class ArchiveChange(BaseModel): archived: bool
+class ReactionChange(BaseModel): emoji: str = Field(min_length=1,max_length=12)
 class NewChat(BaseModel): name: str = Field(min_length=2,max_length=80); members: list[str] = Field(default_factory=list, max_length=30)
 class NewMessage(BaseModel):
     body: str = Field(default='',max_length=4000)
@@ -215,6 +236,8 @@ def msg_json(d: Session, m: Message):
     return {'id':m.id,'chat_id':m.chat_id,'user_id':m.user_id,'nick':sender.nick if sender else 'Удалён',
             'avatar':sender.avatar if sender else '◉', 'body': '' if m.deleted else m.body,
             'reply_to':m.reply_to,'attachment':({'id':a.id,'name':a.display_name,'size':a.size,'type':a.content_type} if a and not m.deleted else None),
+            'reactions':[{'emoji':e,'count':len(users),'users':users} for e,users in sorted(
+                ((emoji, [r.user_id for r in rows if r.emoji==emoji]) for emoji in set(r.emoji for r in rows)),key=lambda x:-len(x[1]))] if (rows:=d.scalars(select(MessageReaction).where(MessageReaction.message_id==m.id)).all()) else [],
             'deleted':m.deleted,'sent_at':m.sent_at.isoformat()+'Z','edited_at':m.edited_at.isoformat()+'Z' if m.edited_at else None}
 
 sockets: dict[str,set[WebSocket]] = defaultdict(set)
@@ -230,7 +253,7 @@ def members_of(d: Session, cid: str):
 @app.get('/api/health')
 def health():
     is_temp = SQLITE and os.getenv('MPOL_EPHEMERAL_STORAGE') == '1'
-    return {'ok':True,'version':'0.2.1','temporary_storage':is_temp,'durable_database':not SQLITE}
+    return {'ok':True,'version':'2.0.0-preview','temporary_storage':is_temp,'durable_database':not SQLITE}
 
 @app.post('/api/auth/register')
 def register(body: Register, request: Request, d:Session=Depends(db)):
@@ -465,6 +488,70 @@ async def promote_admin(chat_id:str,user_id:str,u:User=Depends(authed),d:Session
     target=get_member(d,chat_id,user_id);target.role='admin';d.commit()
     return {'ok':True}
 
+@app.post('/api/me/saved')
+def saved_chat(u:User=Depends(authed),d:Session=Depends(db)):
+    """Create a private, account-specific notes chat; repeat calls are idempotent."""
+    cid='SAVED_'+u.id
+    c=d.get(Chat,cid)
+    if not c:
+        d.add(Chat(id=cid,name='Избранное',is_group=True,owner_id=u.id))
+        d.flush()
+        d.add(Member(chat_id=cid,user_id=u.id,role='owner'))
+        d.commit()
+    return {'id':cid}
+
+@app.put('/api/chats/{chat_id}/archive')
+async def set_archive(chat_id:str,body:ArchiveChange,u:User=Depends(authed),d:Session=Depends(db)):
+    get_member(d,chat_id,u.id)
+    if chat_id=='SAVED_'+u.id:raise HTTPException(400,'Избранное нельзя архивировать')
+    a=d.get(ChatArchive,(u.id,chat_id))
+    if body.archived and not a:d.add(ChatArchive(user_id=u.id,chat_id=chat_id))
+    if not body.archived and a:d.delete(a)
+    d.commit()
+    return {'ok':True,'archived':body.archived}
+
+REACTION_CHOICES={'👍','❤️','😂','🔥','🎉','😮','😢','👏','👀','💯','😎','🙏'}
+@app.put('/api/messages/{message_id}/reaction')
+async def toggle_reaction(message_id:str,body:ReactionChange,u:User=Depends(authed),d:Session=Depends(db)):
+    m=d.get(Message,message_id)
+    if not m or m.deleted:raise HTTPException(404,'Сообщение не найдено')
+    get_member(d,m.chat_id,u.id)
+    if body.emoji not in REACTION_CHOICES:raise HTTPException(400,'Неизвестная реакция')
+    r=d.get(MessageReaction,(message_id,u.id))
+    if r and r.emoji==body.emoji:d.delete(r)
+    elif r:r.emoji=body.emoji
+    else:d.add(MessageReaction(message_id=message_id,user_id=u.id,emoji=body.emoji))
+    d.commit()
+    updated=msg_json(d,m)
+    await emit(members_of(d,m.chat_id),{'type':'message_updated','message':updated})
+    return updated
+
+@app.post('/api/me/photo')
+async def upload_profile_photo(file:UploadFile=File(...),u:User=Depends(authed),d:Session=Depends(db)):
+    limit('avatar:'+u.id,12,3600)
+    content=await file.read(800_001)
+    mime=(file.content_type or '').lower()
+    allowed={'image/png':content.startswith(b'\x89PNG\r\n\x1a\n'),
+             'image/jpeg':content.startswith(b'\xff\xd8\xff'),
+             'image/webp':content.startswith(b'RIFF') and content[8:12]==b'WEBP'}
+    if mime not in allowed or not allowed[mime] or not content or len(content)>800_000:
+        raise HTTPException(415,'Используйте PNG/JPG/WEBP не более 800 КБ')
+    photo=d.get(ProfilePhoto,u.id)
+    if photo:photo.data=content;photo.mime_type=mime
+    else:d.add(ProfilePhoto(user_id=u.id,data=content,mime_type=mime))
+    u.avatar='📷'
+    d.commit()
+    friends=[f.to_id if f.from_id==u.id else f.from_id for f in d.scalars(select(Friendship).where(Friendship.state=='accepted',((Friendship.from_id==u.id)|(Friendship.to_id==u.id)))).all()]
+    await emit(friends,{'type':'profile','user':user_json(u)})
+    return private_user_json(u)
+
+@app.get('/api/avatars/{user_id}')
+def profile_photo(user_id:str,d:Session=Depends(db)):
+    record=d.get(ProfilePhoto,user_id)
+    if not record:raise HTTPException(404,'Аватар не найден')
+    return Response(content=record.data,media_type=record.mime_type,headers={
+        'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'})
+
 @app.get('/api/chats')
 def chats(u:User=Depends(authed),d:Session=Depends(db)):
     memberships=d.scalars(select(Member).where(Member.user_id==u.id)).all()
@@ -480,7 +567,8 @@ def chats(u:User=Depends(authed),d:Session=Depends(db)):
                 'is_group':c.is_group,'peer_id':peer.id if peer else None,
                 'online':bool(peer and peer.id in sockets and sockets[peer.id] and peer.status!='invisible'),
                 'members':users,'read_states':{v.user_id:v.read_at.isoformat()+'Z' for v in d.scalars(select(Member).where(Member.chat_id==c.id)).all()},'role':m.role,'unread':unread,
-                'last':msg_json(d,ms) if ms else None})
+                'last':msg_json(d,ms) if ms else None,
+                'is_saved':c.id=='SAVED_'+u.id,'archived':d.get(ChatArchive,(u.id,c.id)) is not None})
     return sorted(result,key=lambda x:(x['last']['sent_at'] if x['last'] else ''),reverse=True)
 
 @app.get('/api/chats/{chat_id}/messages')
@@ -544,9 +632,11 @@ async def read_chat(chat_id:str,u:User=Depends(authed),d:Session=Depends(db)):
     return {'ok':True}
 
 # Uploads: limit size, whitelist extension AND inspect signature for images; do not execute/unpack or serve as HTML.
-ALLOWED={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp',
+ALLOWED={'.webm':'audio/webm','.ogg':'audio/ogg','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp',
          '.pdf':'application/pdf','.txt':'text/plain','.csv':'text/csv','.zip':'application/zip'}
 def valid_magic(ext:str,data:bytes)->bool:
+    if ext=='.webm':return data.startswith(b'\x1a\x45\xdf\xa3')
+    if ext=='.ogg':return data.startswith(b'OggS')
     if ext=='.png':return data.startswith(b'\x89PNG\r\n\x1a\n')
     if ext in ('.jpg','.jpeg'):return data.startswith(b'\xff\xd8\xff')
     if ext=='.gif':return data.startswith((b'GIF87a',b'GIF89a'))
@@ -560,7 +650,7 @@ async def upload(chat_id:str,file:UploadFile=File(...),u:User=Depends(authed),d:
     get_member(d,chat_id,u.id);limit('upload:'+u.id,20,3600)
     name=Path((file.filename or 'file').replace('\\','/')).name[:160]
     ext=Path(name).suffix.lower()
-    if ext not in ALLOWED:raise HTTPException(415,'Разрешены PNG, JPG, GIF, WEBP, PDF, TXT, CSV, ZIP')
+    if ext not in ALLOWED:raise HTTPException(415,'Разрешены WEBM, OGG, PNG, JPG, GIF, WEBP, PDF, TXT, CSV, ZIP')
     data=await file.read(12*1024*1024+1)
     if not data or len(data)>12*1024*1024:raise HTTPException(413,'Файл должен быть от 1 байта до 12 МБ')
     if not valid_magic(ext,data):raise HTTPException(415,'Содержимое файла не соответствует формату')
@@ -618,6 +708,20 @@ async def websocket(ws:WebSocket):
                 with SessionLocal() as d:
                     if isinstance(cid,str) and d.scalar(select(Member).where(Member.chat_id==cid,Member.user_id==uid)):
                         await emit([x for x in members_of(d,cid) if x!=uid],{'type':'typing','chat_id':cid,'user_id':uid})
+            if event.get('type')=='call_signal':
+                to=event.get('to')
+                kind=event.get('kind')
+                cid=event.get('call_id')
+                payload=event.get('payload') or {}
+                if not isinstance(to,str) or not isinstance(cid,str) or len(cid)>60 or kind not in (
+                    'invite','accept','decline','busy','offer','answer','ice','hangup'):
+                    continue
+                if not isinstance(payload,dict) or len(json.dumps(payload))>65000:continue
+                with SessionLocal() as d:
+                    if to==uid or not is_friend(d,uid,to) or blocked(d,uid,to):continue
+                    sender=d.get(User,uid)
+                    await emit([to],{'type':'call_signal','from_id':uid,'nick':sender.nick,
+                         'kind':kind,'call_id':cid,'payload':payload})
     except (WebSocketDisconnect, asyncio.TimeoutError,ValueError,RuntimeError):pass
     finally:
         if uid:
