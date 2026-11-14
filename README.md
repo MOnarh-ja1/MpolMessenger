@@ -1,4 +1,4 @@
-> 🟢 **MPOL Messenger Desktop 2.3.0 — отдельное приложение без Edge:** [скачать новый EXE (110 МБ)](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.3.0-desktop/MpolMessenger.exe) · [страница выпуска](https://github.com/MOnarh-ja1/MpolMessenger/releases/tag/v2.3.0-desktop) · [открыть веб-версию](https://mpol-messenger-api.onrender.com).
+> 🟢 **MPOL Messenger Desktop 2.4.0 — Windows EXE и мобильный Safari:** [скачать MpolMessenger.exe (110 МБ)](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.4.0-desktop/MpolMessenger.exe) · [страница выпуска](https://github.com/MOnarh-ja1/MpolMessenger/releases/tag/v2.4.0-desktop) · [открыть веб-версию](https://mpol-messenger-api.onrender.com). Звонки поддерживают TURN после [настройки сервера](CALLS_AND_IPHONE.md); без TURN некоторые сети не соединяются.
 >
 > 🖥️ Новая версия собрана на **Electron** со встроенным Chromium: своё окно, собственная иконка Windows, запросы разрешения на микрофон/камеру, F11 и нативные загрузки. Оригинальные 4 иконки MPOL Black сохранены. [Инструкция и ограничения](desktop/README_RU.md).
 >
