@@ -2,7 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, x => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
 const storage = {get token(){return localStorage.getItem('mpol_token')||''},set token(v){v?localStorage.setItem('mpol_token',v):localStorage.removeItem('mpol_token')}};
-const state = {me:null,chats:[],friends:[],requests:[],requestsLoaded:false,messages:[],active:null,tab:'chats',ws:null,retry:0,reply:null,register:false,typingTimer:0,
+const state = {me:null,chats:[],friends:[],requests:[],requestsLoaded:false,messages:[],active:null,tab:'chats',chatFilter:'all',ws:null,retry:0,reply:null,register:false,typingTimer:0,
   notif:localStorage.getItem('mpol_notify')==='1',sound:localStorage.getItem('mpol_sound')!=='0',scale:Number(localStorage.getItem('mpol_scale')||'100')};
 function toast(text){const e=document.createElement('div');e.className='toast';e.textContent=text;$('toastZone').append(e);setTimeout(()=>e.remove(),4000)}
 function errorText(err){return String(err?.message||err||'Неизвестная ошибка')}
@@ -16,13 +16,21 @@ async function api(path,{method='GET',body,form=false}={}){
 }
 function timestr(v){if(!v)return '';const d=new Date(v);return d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}
 function datestr(v){if(!v)return '';const d=new Date(v),today=new Date();return d.toDateString()===today.toDateString()?timestr(v):d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}
-function avatar(name,online=false){return `<div class="avatar ${online?'online':''}">${esc((name||'◉').slice(0,3))}</div>`}
+function avatar(name,online=false,userId=null){
+ const pic=name==='📷'&&userId?'<img class="avatar-photo" alt="" src="/api/avatars/'+encodeURIComponent(userId)+'">':esc((name||'◉').slice(0,3));
+ return '<div class="avatar '+(online?'online':'')+'">'+pic+'</div>'
+}
+function updateOwnAvatar(){
+ const btn=$('myProfile');if(!state.me)return;
+ if(state.me.avatar==='📷'){btn.textContent='';btn.style.backgroundImage='url(/api/avatars/'+encodeURIComponent(state.me.id)+'?t='+Date.now()+')'}
+ else{btn.textContent=state.me.nick.slice(0,1).toUpperCase();btn.style.backgroundImage=''}
+}
 function showLogin(){state.me=null;$('authScreen').classList.remove('hidden');$('mainScreen').classList.add('hidden');$('password').value='';serverHealth()}
 function showApp(){ $('authScreen').classList.add('hidden');$('mainScreen').classList.remove('hidden');}
 // No window-level globals exposed: every on-screen action binds a real handler.
 async function serverHealth(){try{const r=await api('/health');$('serverStatus').textContent=r.ok?(r.temporary_storage?'Тестовый онлайн · данные могут исчезнуть':r.durable_database?'Онлайн · сообщения сохраняются':'Сервер доступен'):'Сервер не отвечает';$('serverStatus').previousElementSibling.classList.toggle('good',!!r.ok)}catch{$('serverStatus').textContent='Сервер недоступен';$('serverStatus').previousElementSibling.classList.remove('good')}}
 async function startup(){try{if(storage.token){state.me=await api('/me');showMain();return}}catch{storage.token=''}showLogin()}
-async function showMain(){showApp();state.requests=[];state.requestsLoaded=false;$('myProfile').textContent=state.me.nick.slice(0,1).toUpperCase();$('myAccountId').textContent=state.me.id;applyScale();await refreshAll();wsConnect();renderTab('chats')}
+async function showMain(){showApp();state.requests=[];state.requestsLoaded=false;updateOwnAvatar();$('myAccountId').textContent=state.me.id;applyScale();await refreshAll();wsConnect();renderTab('chats')}
 function setFriendRequests(req){
  const existing=new Set(state.requests.map(r=>r.request_id));
  const incoming=state.requestsLoaded?req.filter(r=>!existing.has(r.request_id)):[];
@@ -53,8 +61,23 @@ async function refreshRequests(){
  if(!state.me)return;
  try{const requests=await api('/friends/requests');if(!state.me)return;setFriendRequests(requests);if(state.tab==='notifications')renderList()}catch{}
 }
-function renderTab(tab){state.tab=tab;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));
+async function openSavedChat(){
+ try{const created=await api('/me/saved',{method:'POST'});await refreshAll();renderTab('chats');await selectChat(created.id)}
+ catch(e){toast(errorText(e))}
+}
+async function toggleChatArchive(){
+ if(!state.active||state.active.is_saved)return;
+ try{const c=state.active;await api('/chats/'+encodeURIComponent(c.id)+'/archive',{method:'PUT',body:{archived:!c.archived}});
+  await refreshAll();state.chatFilter=c.archived?'all':'archive';
+  updateFilters();renderList();toast(c.archived?'Вернули из архива':'Переписка в архиве')}
+ catch(e){toast(errorText(e))}
+}
+function updateFilters(){
+ document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('active',b.dataset.filter===state.chatFilter))
+}
+function renderTab(tab){if(tab==='saved'){openSavedChat();return}state.tab=tab;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));
  $('listTitle').textContent=({chats:'Сообщения',friends:'Друзья',groups:'Группы',notifications:'Заявки в друзья',settings:'Настройки'})[tab]||'Сообщения';
+ $('chatFilters').classList.toggle('hidden',tab!=='chats');
  $('listSubtitle').textContent=({chats:'На связи с теми, кто важен',friends:'Ваш круг общения',groups:'Командные беседы',notifications:'Новые знакомства',settings:'Персональные параметры'})[tab];
  $('newMessage').textContent=tab==='groups'?'+ Создать группу':tab==='friends'?'+ Добавить друга':tab==='notifications'?'Обновить':'⚙ Настройки';
  if(tab==='chats')$('newMessage').textContent='+ Новый чат';
@@ -66,30 +89,72 @@ function renderList(){let filter=$('listSearch').value.trim().toLowerCase();cons
   if(!state.requests.length){root.innerHTML='<div class="list-blank"><strong>Нет новых заявок</strong>Новые заявки появятся здесь автоматически.</div>';return}
   for(const r of state.requests){
    const el=document.createElement('div');el.className='request-item';
-   el.innerHTML=avatar(r.user.avatar)+`<div class="request-content"><strong>${esc(r.user.nick)}</strong><span>${esc(r.user.id)}</span><p>Хочет добавить вас в друзья</p><div class="request-buttons"><button type="button" data-accept="1">Принять</button><button type="button" data-accept="0">Отклонить</button></div></div>`;
+   el.innerHTML=avatar(r.user.avatar,false,r.user.id)+`<div class="request-content"><strong>${esc(r.user.nick)}</strong><span>${esc(r.user.id)}</span><p>Хочет добавить вас в друзья</p><div class="request-buttons"><button type="button" data-accept="1">Принять</button><button type="button" data-accept="0">Отклонить</button></div></div>`;
    el.querySelector('[data-accept="1"]').onclick=()=>respondFriendRequest(r.request_id,true);
    el.querySelector('[data-accept="0"]').onclick=()=>respondFriendRequest(r.request_id,false);
    root.append(el);
   }return
  }
  if(state.tab==='friends'){let a=state.friends.filter(f=>f.nick.toLowerCase().includes(filter)||f.id.toLowerCase().includes(filter));if(!a.length)root.innerHTML='<div class="list-blank"><strong>Пока никого нет</strong>Найдите друга по уникальному ID.</div>';
-  for(const f of a){const el=document.createElement('button');el.className='chat-item';el.innerHTML=avatar(f.avatar,f.online)+`<div class="chat-item-body"><div class="chat-item-head"><strong>${esc(f.nick)}</strong></div><div class="chat-item-preview">${f.online?'В сети':'Не в сети'} · ${esc(f.id)}</div></div>`;el.onclick=()=>openFriend(f);root.append(el)}return}
- const a=state.chats.filter(c=>(state.tab!=='groups'||c.is_group)&&c.name.toLowerCase().includes(filter));if(!a.length)root.innerHTML='<div class="list-blank"><strong>Диалогов пока нет</strong>Создайте чат или найдите друзей.</div>';
- for(const c of a){const el=document.createElement('button');el.className='chat-item'+(state.active?.id===c.id?' selected':'');el.innerHTML=avatar(c.avatar,c.online)+`<div class="chat-item-body"><div class="chat-item-head"><strong>${esc(c.name)}</strong><time>${datestr(c.last?.sent_at)}</time></div><div class="chat-item-preview">${esc(c.last?.deleted?'Сообщение удалено':c.last?.body|| (c.last?.attachment?'📎 '+c.last.attachment.name:'Новая переписка'))}</div></div>${c.unread?`<span class="count-badge">${c.unread}</span>`:''}`;el.onclick=()=>selectChat(c.id);root.append(el)}
+  for(const f of a){const el=document.createElement('button');el.className='chat-item';el.innerHTML=avatar(f.avatar,f.online,f.id)+`<div class="chat-item-body"><div class="chat-item-head"><strong>${esc(f.nick)}</strong></div><div class="chat-item-preview">${f.online?'В сети':'Не в сети'} · ${esc(f.id)}</div></div>`;el.onclick=()=>openFriend(f);root.append(el)}return}
+ const a=state.chats.filter(c=>{
+  if(state.tab==='groups'&&!c.is_group)return false;
+  if(state.chatFilter==='archive'){if(!c.archived)return false}
+  else if(c.archived)return false;
+  if(state.tab==='chats'){
+   if(state.chatFilter==='direct'&&c.is_group)return false;
+   if(state.chatFilter==='groups'&&!c.is_group)return false;
+   if(state.chatFilter==='unread'&&!c.unread)return false;
+  }
+  return c.name.toLowerCase().includes(filter)
+ });if(!a.length)root.innerHTML='<div class="list-blank"><strong>Диалогов пока нет</strong>Создайте чат или найдите друзей.</div>';
+ for(const c of a){const el=document.createElement('button');el.className='chat-item'+(state.active?.id===c.id?' selected':'');el.innerHTML=avatar(c.avatar,c.online,c.peer_id)+`<div class="chat-item-body"><div class="chat-item-head"><strong>${esc(c.name)}</strong><time>${datestr(c.last?.sent_at)}</time></div><div class="chat-item-preview">${esc(c.last?.deleted?'Сообщение удалено':c.last?.body|| (c.last?.attachment?'📎 '+c.last.attachment.name:'Новая переписка'))}</div></div>${c.unread?`<span class="count-badge">${c.unread}</span>`:''}`;el.onclick=()=>selectChat(c.id);root.append(el)}
 }
 async function selectChat(id){try{const c=state.chats.find(x=>x.id===id);if(!c)throw Error('Чат не найден');state.active=c;state.reply=null;replyUpdate();$('emptyChat').classList.add('hidden');$('openedChat').classList.remove('hidden');updateHeader();state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages();await api('/chats/'+encodeURIComponent(id)+'/read',{method:'POST'});state.active.unread=0;renderList();$('messageInput').focus()}catch(e){toast(errorText(e))}}
-function updateHeader(){if(!state.active)return;const c=state.active;$('chatAvatar').textContent=c.avatar;$('chatName').textContent=c.name;$('chatPresence').textContent=c.is_group?c.members.length+' участников':c.online?'● В сети':'Не в сети'}
+function updateHeader(){if(!state.active)return;const c=state.active;
+ $('chatAvatar').innerHTML=(c.avatar==='📷'&&c.peer_id)?'<img class="avatar-photo" src="/api/avatars/'+encodeURIComponent(c.peer_id)+'" alt="">':esc(c.avatar);
+ $('chatName').textContent=c.name;$('chatPresence').textContent=c.is_saved?'Только вы':c.is_group?c.members.length+' участников':c.online?'● В сети':'Не в сети';
+ $('archiveChat').classList.toggle('hidden',!!c.is_saved);
+ $('archiveChat').title=c.archived?'Вернуть из архива':'Отправить в архив';
+ $('voiceCall').classList.toggle('hidden',c.is_group||c.is_saved);
+ $('videoCall').classList.toggle('hidden',c.is_group||c.is_saved);
+}
 function renderMessages(){const root=$('messages');root.replaceChildren();let lastDay='';const c=state.active;
  for(const m of state.messages){const day=new Date(m.sent_at).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});if(day!==lastDay){const label=document.createElement('div');label.className='day-divider';label.textContent=day;root.append(label);lastDay=day}
   const mine=m.user_id===state.me.id;let reply='';if(m.reply_to){const original=state.messages.find(x=>x.id===m.reply_to);reply=`<div class="msg-reply">↪ ${esc(original?.body?.slice(0,80)||'Ответ на сообщение')}</div>`}
-  const file=m.attachment?`<button class="msg-file" data-file="${esc(m.attachment.id)}">📎 ${esc(m.attachment.name)} (${(m.attachment.size/1024).toFixed(0)} КБ)</button>`:'';
+  const voice=!!m.attachment&&(['audio/webm','audio/ogg'].includes(m.attachment.type));
+  const file=voice?'<button class="msg-file voice-file" data-audio="'+esc(m.attachment.id)+'">▶ Голосовое · '+Math.round(m.attachment.size/1024)+' КБ</button>':m.attachment?'<button class="msg-file" data-file="'+esc(m.attachment.id)+'">📎 '+esc(m.attachment.name)+' ('+Math.round(m.attachment.size/1024)+' КБ)</button>':'';
+  const reacts=(m.reactions||[]).map(r=>'<button type="button" data-react="'+esc(r.emoji)+'" class="'+((r.users||[]).includes(state.me.id)?'my-reaction':'')+'">'+esc(r.emoji)+' '+r.count+'</button>').join('');
+  const reactionHtml=reacts?'<div class="reaction-strip">'+reacts+'</div>':'';
   const row=document.createElement('div');row.className='msg-row'+(mine?' mine':'');
-  row.innerHTML=`<div class="mini-avatar">${esc(m.avatar)}</div><div class="msg-bubble">${!mine&&c?.is_group?`<div class="msg-sender">${esc(m.nick)}</div>`:''}${reply}<div class="msg-text">${m.deleted?'Сообщение удалено':esc(m.body)}</div>${file}<div class="msg-meta">${m.edited_at?'изм. · ':''}${timestr(m.sent_at)}${mine?(c?.read_states&&Object.entries(c.read_states).some(([uid,t])=>uid!==state.me.id&&new Date(t)>=new Date(m.sent_at))?' · ✓✓':' · ✓'):''}</div></div><div class="msg-actions">${!m.deleted?'<button data-action="reply" title="Ответить">↶</button>':''}${mine&&!m.deleted?'<button data-action="edit" title="Редактировать">✎</button><button data-action="delete" title="Удалить">×</button>':''}</div>`;
+  row.innerHTML=`<div class="mini-avatar">${esc(m.avatar)}</div><div class="msg-bubble">${!mine&&c?.is_group?`<div class="msg-sender">${esc(m.nick)}</div>`:''}${reply}<div class="msg-text">${m.deleted?'Сообщение удалено':esc(m.body)}</div>${file}${reactionHtml}<div class="msg-meta">${m.edited_at?'изм. · ':''}${timestr(m.sent_at)}${mine?(c?.read_states&&Object.entries(c.read_states).some(([uid,t])=>uid!==state.me.id&&new Date(t)>=new Date(m.sent_at))?' · ✓✓':' · ✓'):''}</div></div><div class="msg-actions">${!m.deleted?'<button data-action="reply" title="Ответить">↶</button><button data-action="react" title="Реакция">♡</button><button data-action="copy" title="Копировать">⧉</button>':''}${mine&&!m.deleted?'<button data-action="edit" title="Редактировать">✎</button><button data-action="delete" title="Удалить">×</button>':''}</div>`;
   row.querySelectorAll('[data-action]').forEach(btn=>btn.onclick=()=>messageAction(btn.dataset.action,m));
-  row.querySelector('[data-file]')?.addEventListener('click',()=>downloadFile(m.attachment));root.append(row)}root.scrollTop=root.scrollHeight;
+  row.querySelectorAll('[data-react]').forEach(btn=>btn.onclick=()=>setReaction(m,btn.dataset.react)); 
+  row.querySelector('[data-audio]')?.addEventListener('click',e=>playVoiceAttachment(m.attachment,e.currentTarget));
+  row.querySelector('[data-file]')?.addEventListener('click',()=>previewOrDownload(m.attachment));root.append(row)}root.scrollTop=root.scrollHeight;
 }
 async function downloadFile(a){try{const res=await fetch('/api/attachments/'+encodeURIComponent(a.id),{headers:{Authorization:'Bearer '+storage.token}});if(!res.ok)throw Error('Не удалось загрузить файл');const blob=await res.blob(),url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=a.name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),10000)}catch(e){toast(errorText(e))}}
-async function messageAction(action,m){if(action==='reply'){state.reply=m.id;replyUpdate();$('messageInput').focus();return}if(action==='edit'){
+async function previewOrDownload(a){
+ if(!a.type?.startsWith('image/'))return downloadFile(a);
+ try{const res=await fetch('/api/attachments/'+encodeURIComponent(a.id),{headers:{Authorization:'Bearer '+storage.token}});
+  if(!res.ok)throw Error('Не удалось открыть изображение');
+  const blob=await res.blob();const url=URL.createObjectURL(blob);
+  modal('Изображение','<img class="image-preview" src="'+url+'" alt="Предпросмотр">');
+  $('closeModal').addEventListener('click',()=>URL.revokeObjectURL(url),{once:true});
+ }catch(e){toast(errorText(e))}
+}
+async function setReaction(m,emoji){
+ try{await api('/messages/'+encodeURIComponent(m.id)+'/reaction',{method:'PUT',body:{emoji}})}catch(e){toast(errorText(e))}
+}
+function pickReaction(m){
+ const items=['👍','❤️','😂','🔥','🎉','😮','😢','👏','👀','💯','😎','🙏'];
+ modal('Реакция на сообщение','<div class="reaction-picker">'+items.map(e=>'<button type="button" data-emoji="'+e+'">'+e+'</button>').join('')+'</div>');
+ document.querySelectorAll('#modalContent [data-emoji]').forEach(el=>el.onclick=async()=>{await setReaction(m,el.dataset.emoji);closeModal()})
+}
+async function messageAction(action,m){
+ if(action==='react'){pickReaction(m);return}
+ if(action==='copy'){try{await navigator.clipboard.writeText(m.body);toast('Текст скопирован')}catch{toast('Не удалось скопировать')}return}
+ if(action==='reply'){state.reply=m.id;replyUpdate();$('messageInput').focus();return}if(action==='edit'){
   modal('Редактировать сообщение',`<label>Текст<textarea id="editBody" rows="4" maxlength="4000">${esc(m.body)}</textarea></label><button id="saveEdit" class="button">Сохранить</button>`);
   $('saveEdit').onclick=async()=>{try{await api('/messages/'+m.id,{method:'PATCH',body:{body:$('editBody').value}});closeModal();await loadMessages()}catch(e){toast(errorText(e))}};
   return}
@@ -105,6 +170,7 @@ async function uploadFile(file){if(!file||!state.active)return;if(file.size>12*1
 function wsConnect(){if(!storage.token||!state.me)return;try{const proto=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(proto+'//'+location.host+'/ws');state.ws=ws;
  ws.onopen=()=>{state.retry=0;ws.send(JSON.stringify({type:'auth',token:storage.token}))};
  ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch{return}
+  if(m.type==='call_signal'){onCallSignal(m);return}
   if(m.type==='authenticated'||m.type==='friend_request'){refreshAll().catch(()=>{});return}
   if(m.type==='message'){if(m.message.user_id!==state.me.id){notifyNewMessage(m.message)}if(state.active?.id===m.message.chat_id){if(!state.messages.some(x=>x.id===m.message.id)){state.messages.push(m.message);renderMessages()}api('/chats/'+state.active.id+'/read',{method:'POST'}).catch(()=>{})}refreshAll().catch(()=>{})}
   if(m.type==='message_updated'){if(state.active?.id===m.message.chat_id){const idx=state.messages.findIndex(x=>x.id===m.message.id);if(idx>=0){state.messages[idx]=m.message;renderMessages()}}refreshAll().catch(()=>{})}
@@ -151,16 +217,24 @@ function chatDetails(){if(!state.active)return;const c=state.active;
 }
 function applyScale(){document.documentElement.style.zoom=state.scale+'%'}
 function openSettings(){modal('Настройки MPOL',`<div class="profile-id-card"><div class="profile-id-caption">ВАШ ID · ДЛЯ ПОИСКА В ДРУЗЬЯХ</div><div class="profile-id-row"><code>${esc(state.me.id)}</code><button id="copyProfileId" type="button">Скопировать</button></div></div><label>Никнейм<input id="profileNick" value="${esc(state.me.nick)}" maxlength="48"></label><label>Описание<input id="profileDescription" value="${esc(state.me.description)}" maxlength="260"></label><label>Аватар (символ)<input id="profileAvatar" value="${esc(state.me.avatar)}" maxlength="8"></label>
+ <label>Фотография профиля (PNG, JPG или WEBP до 800 КБ)<input id="profilePhoto" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="uploadProfilePhoto" class="button outlined">Загрузить фото профиля</button>
  <label>Сетевой статус<select id="profileStatus"><option value="online">В сети</option><option value="away">Отошёл</option><option value="dnd">Не беспокоить</option><option value="invisible">Невидимка</option></select></label><button class="button" id="saveProfile">Сохранить профиль</button>
  <div class="setting-row">Уведомления Windows <input type="checkbox" id="notificationsOn" ${state.notif?'checked':''}></div><div class="setting-row">Звук сообщений <input type="checkbox" id="soundsOn" ${state.sound?'checked':''}></div><div class="setting-row">Масштаб интерфейса <select id="scaleSelect"><option value="85">85%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select></div>
- <div class="setting-row">Email: ${esc(state.me.email||'не указан')} ${state.me.email_verified?'✓ подтверждён':'(не подтверждён)'}</div>${state.me.email&&!state.me.email_verified?'<button id="verifyEmail" class="button outlined">Подтвердить email</button>':''}<button id="changePassword" class="button outlined">Изменить пароль</button><button id="serverSettings" class="button outlined">Настройка сервера</button><button id="logOut" class="button outlined">Выйти из аккаунта</button><p class="secondary">ID можно отправить друзьям для поиска. Пароль и токен никому не передавайте.</p>`);
+ <div class="setting-row">Email: ${esc(state.me.email||'не указан')} ${state.me.email_verified?'✓ подтверждён':'(не подтверждён)'}</div>${state.me.email&&!state.me.email_verified?'<button id="verifyEmail" class="button outlined">Подтвердить email</button>':''}<button id="changePassword" class="button outlined">Изменить пароль</button><details class="developer-settings"><summary>Для разработчика</summary><button id="serverSettings" class="button outlined">Настройка сервера</button></details><button id="logOut" class="button outlined">Выйти из аккаунта</button><p class="secondary">ID можно отправить друзьям для поиска. Пароль и токен никому не передавайте.</p>`);
  $('copyProfileId').onclick=copyAccountId;
+ $('uploadProfilePhoto').onclick=uploadProfilePhoto;
  $('profileStatus').value=state.me.status;$('scaleSelect').value=String(state.scale);
- $('saveProfile').onclick=async()=>{try{state.me=await api('/me',{method:'PATCH',body:{nick:$('profileNick').value,description:$('profileDescription').value,avatar:$('profileAvatar').value,status:$('profileStatus').value}});$('myProfile').textContent=state.me.nick.slice(0,1).toUpperCase();toast('Профиль сохранён');closeModal();refreshAll()}catch(e){toast(errorText(e))}};
+ $('saveProfile').onclick=async()=>{try{state.me=await api('/me',{method:'PATCH',body:{nick:$('profileNick').value,description:$('profileDescription').value,avatar:$('profileAvatar').value,status:$('profileStatus').value}});updateOwnAvatar();toast('Профиль сохранён');closeModal();refreshAll()}catch(e){toast(errorText(e))}};
  $('notificationsOn').onchange=async e=>{if(e.target.checked&&'Notification'in window){const r=await Notification.requestPermission();state.notif=r==='granted';e.target.checked=state.notif}else state.notif=false;localStorage.setItem('mpol_notify',state.notif?'1':'0')};
  $('soundsOn').onchange=e=>{state.sound=e.target.checked;localStorage.setItem('mpol_sound',state.sound?'1':'0')};
  $('scaleSelect').onchange=e=>{state.scale=Number(e.target.value);localStorage.setItem('mpol_scale',state.scale);applyScale()};
  $('logOut').onclick=()=>signout(true);$('changePassword').onclick=changePassword;$('serverSettings').onclick=configServer;$('verifyEmail')?.addEventListener('click',verifyEmail);
+}
+async function uploadProfilePhoto(){
+ const file=$('profilePhoto')?.files?.[0];if(!file)return toast('Выберите изображение');
+ if(file.size>800000)return toast('Максимальный размер фото — 800 КБ');
+ try{const data=new FormData();data.append('file',file);state.me=await api('/me/photo',{method:'POST',body:data,form:true});
+ updateOwnAvatar();toast('Фотография обновлена');openSettings();refreshAll()}catch(e){toast(errorText(e))}
 }
 function verifyEmail(){modal('Подтверждение email',`<p>Получите 8-значный код на ${esc(state.me.email)}. Не передавайте его другим.</p><button id="requestVerify" class="button">Получить код</button><label>Код<input id="verifyCode" maxlength="8" inputmode="numeric" placeholder="12345678"></label><button id="confirmVerify" class="button outlined">Подтвердить</button>`);
  $('requestVerify').onclick=async()=>{try{await api('/auth/email/verification/request',{method:'POST'});toast('Код отправлен на email')}catch(e){toast(errorText(e))}};
@@ -181,9 +255,11 @@ $('toggleAuth').onclick=()=>{state.register=!state.register;$('registerFields').
 $('authForm').onsubmit=async e=>{e.preventDefault();$('authError').textContent='';$('authSubmit').disabled=true;try{const login=$('login').value.trim(),password=$('password').value;if(state.register&&password!==$('password2').value)throw Error('Пароли не совпадают');const body=state.register?{nick:$('nick').value,login,password,email:$('email').value||null}:{login,password};const data=await api(state.register?'/auth/register':'/auth/login',{method:'POST',body});storage.token=data.token;state.me=data.user;await showMain()}catch(e){$('authError').textContent=errorText(e)}finally{$('authSubmit').disabled=false}};
 $('configureServer').onclick=configServer;$('forgotPassword').onclick=forgotPassword;$('newMessage').onclick=()=>{if(state.tab==='notifications')refreshAll();else if(state.tab==='settings')openSettings();else if(state.tab==='groups')createGroup();else findFriends()};$('createGroup').onclick=createGroup;
 $('copyMyId').onclick=copyAccountId;
+document.querySelectorAll('[data-filter]').forEach(el=>el.onclick=()=>{state.chatFilter=el.dataset.filter;updateFilters();renderList()});
+updateFilters();
 $('emptyFind').onclick=findFriends;document.querySelectorAll('.rail-btn[data-tab]').forEach(b=>b.onclick=()=>renderTab(b.dataset.tab));$('myProfile').onclick=openSettings;
-$('listSearch').oninput=renderList;$('composer').onsubmit=e=>{e.preventDefault();send()};$('attachBtn').onclick=attach;$('fileInput').onchange=e=>uploadFile(e.target.files[0]);
-$('emojiBtn').onclick=()=>{const input=$('messageInput');input.value+=' 🙂';input.focus()};$('messageInput').oninput=()=>{if(state.ws?.readyState===WebSocket.OPEN&&state.active){state.ws.send(JSON.stringify({type:'typing',chat_id:state.active.id}))}};
+$('listSearch').oninput=renderList;$('composer').onsubmit=e=>{e.preventDefault();send()};$('voiceBtn').onclick=toggleVoiceRecording;$('archiveChat').onclick=toggleChatArchive;$('attachBtn').onclick=attach;$('fileInput').onchange=e=>uploadFile(e.target.files[0]);
+$('emojiBtn').onclick=toggleEmojiPalette;$('messageInput').oninput=()=>{if(state.ws?.readyState===WebSocket.OPEN&&state.active){state.ws.send(JSON.stringify({type:'typing',chat_id:state.active.id}))}};
 $('clearReply').onclick=()=>{state.reply=null;replyUpdate()};$('searchMessages').onclick=()=>{$('messageSearchBar').classList.toggle('hidden');$('messageSearchInput').focus()};
 $('messageSearchInput').oninput=async e=>{try{if(!state.active)return;state.messages=await api('/chats/'+state.active.id+'/messages'+(e.target.value?'?search='+encodeURIComponent(e.target.value):''));renderMessages()}catch(err){toast(errorText(err))}};
 $('messageSearchClear').onclick=()=>{$('messageSearchInput').value='';$('messageSearchBar').classList.add('hidden');loadMessages()};$('chatInfo').onclick=chatDetails;
