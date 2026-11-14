@@ -5,7 +5,7 @@ const path = require('node:path');
 const { SERVER_ORIGIN, isMpolUrl, canOpenExternal,
   safeFilename, normalizeMediaTypes } = require('./lib/security.cjs');
 
-const APP_VERSION = '2.9.0';
+const APP_VERSION = '3.0.0';
 const { offerDesktopUpdate } = require('./lib/updater.cjs');
 const APP_URL = SERVER_ORIGIN + '/?mpol_client=' + APP_VERSION;
 const WINDOW_PARTITION = 'persist:mpol-desktop-v23';
@@ -50,6 +50,8 @@ function setupPermissions(ses) {
     const verified = isMpolUrl(details?.requestingUrl || origin);
     if (!verified) return false;
     if (permission === 'notifications') return notificationsGranted;
+    // Copying user-selected text is allowed only on our verified HTTPS origin.
+    if (permission === 'clipboard-sanitized-write'||permission === 'clipboard-write') return true;
     if (permission === 'media') {
       const type = details?.mediaType;
       return (type === 'audio' || type === 'video') && mediaGrants.has(type);
@@ -61,6 +63,9 @@ function setupPermissions(ses) {
   ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
     if (!isMpolUrl(details?.requestingUrl || webContents.getURL())) {
       callback(false); return;
+    }
+    if (permission === 'clipboard-sanitized-write'||permission === 'clipboard-write') {
+      callback(true); return;
     }
     if (permission === 'notifications') {
       if (notificationsGranted) {callback(true);return;}
@@ -160,6 +165,23 @@ function createWindow() {
     if (!isMpolUrl(url)) event.preventDefault();
   });
   win.webContents.on('will-attach-webview',e=>e.preventDefault());
+  // Without the native menu, Chromium's text selection has no right-click
+  // copy/paste controls inside a frameless app. Expose standard OS roles only.
+  win.webContents.on('context-menu',(_event,params)=>{
+    if(!isMpolUrl(win.webContents.getURL()))return;
+    const options=[];
+    const editable=!!params.isEditable;
+    const selected=!!params.selectionText?.length;
+    if(selected)options.push({label:'Копировать',role:'copy'});
+    if(editable){
+      if(options.length)options.push({type:'separator'});
+      options.push({label:'Вырезать',role:'cut',enabled:selected});
+      options.push({label:'Вставить',role:'paste'});
+      options.push({label:'Выделить всё',role:'selectAll'});
+    }
+    if(!options.length)return;
+    Menu.buildFromTemplate(options).popup({window:win});
+  });
   win.webContents.on('before-input-event',(e,input)=>{
     if (input.type !== 'keyDown' || input.isAutoRepeat) return;
     if (input.key === 'F11') {

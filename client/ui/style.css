@@ -395,3 +395,25 @@ img{-webkit-user-drag:none;user-drag:none}
   .moderation-danger{padding:11px}
   .modal-body .moderation-danger input{font-size:16px}
 }
+
+/* MPOL 3.0 — enable real text copying, while leaving the rest of the app chrome protected. */
+.msg-text,.msg-reply,.msg-sender,.profile-id-row code,.profile-hero-name,.copyable-text{
+ -webkit-user-select:text!important;user-select:text!important;
+ -webkit-touch-callout:default!important;cursor:text;
+}
+.conv-user-profile{
+ background:transparent;color:inherit;text-align:left;
+ border:0;min-width:0;max-width:100%;
+ padding:5px;border-radius:11px;cursor:pointer;
+}
+.conv-user-profile:hover:not(:disabled),.conv-user-profile:focus-visible:not(:disabled){
+ background:#222226;outline:1px solid #3b3b40;
+}
+.conv-user-profile:disabled{cursor:default;opacity:1}
+.msg-actions [data-action="copy"]{font-size:14px;min-width:32px;min-height:30px}
+@media(max-width:600px){
+ .conv-user-profile{padding:2px;min-width:0;flex:1 1 auto}
+ .conv-user-profile .avatar{flex-shrink:0}
+ .conv-user-profile .profile-user-copy{display:block}
+ .msg-actions [data-action="copy"]{min-width:37px;min-height:37px}
+}
