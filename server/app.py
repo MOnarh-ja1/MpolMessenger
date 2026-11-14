@@ -302,6 +302,15 @@ def logout(authorization:str|None=Header(None),u:User=Depends(authed),d:Session=
 @app.get('/api/me')
 def me(u:User=Depends(authed)): return private_user_json(u)
 
+@app.get('/api/windows-update')
+def windows_update():
+    # A checksum is mandatory for EXE auto-update, populated after release.
+    digest=os.getenv('MPOL_WINDOWS_EXE_SHA256','').strip().lower()
+    if digest and not re.fullmatch(r'[0-9a-f]{64}',digest):digest=''
+    return {'version':'2.1.0','required':True,
+      'download_url':'https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.1.0/MpolMessenger.exe',
+      'sha256':digest}
+
 @app.get('/api/developer/status')
 def developer_status(u:User=Depends(developer_only)):
     # Deliberately no access to unrelated users' private records.
