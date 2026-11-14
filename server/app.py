@@ -3,6 +3,7 @@ Use SQLite for a local demo, PostgreSQL for a hosted deployment.
 """
 from __future__ import annotations
 import asyncio
+import base64
 import hashlib
 import json
 import hmac
@@ -265,6 +266,31 @@ def members_of(d: Session, cid: str):
 def health():
     is_temp = SQLITE and os.getenv('MPOL_EPHEMERAL_STORAGE') == '1'
     return {'ok':True,'version':'2.2.0','temporary_storage':is_temp,'durable_database':not SQLITE}
+
+# Authenticated, short-lived TURN credentials (coturn REST auth).
+# No credentials or secrets are stored in GitHub; configure them in the host environment.
+@app.get('/api/calls/ice')
+def ice_configuration(u: User = Depends(authed)):
+    servers = [{'urls': ['stun:stun.l.google.com:19302']}]
+    urls = [v.strip() for v in os.getenv('MPOL_TURN_URLS', '').split(',') if v.strip()]
+    urls = [v for v in urls if re.fullmatch(r'turns?:[^\s]{3,240}', v)][:6]
+    relay = False
+    ttl = 0
+    secret = os.getenv('MPOL_TURN_SECRET', '').strip()
+    if urls and secret:
+        ttl = min(86400, max(600, int(os.getenv('MPOL_TURN_TTL', '3600'))))
+        username = str(int(time.time()) + ttl) + ':' + u.id
+        credential = base64.b64encode(hmac.new(
+            secret.encode('utf-8'), username.encode('utf-8'), hashlib.sha1
+        ).digest()).decode('ascii')
+        servers.append({'urls': urls, 'username': username, 'credential': credential})
+        relay = True
+    elif urls and os.getenv('MPOL_TURN_USERNAME') and os.getenv('MPOL_TURN_PASSWORD'):
+        servers.append({'urls': urls, 'username': os.environ['MPOL_TURN_USERNAME'],
+                        'credential': os.environ['MPOL_TURN_PASSWORD']})
+        relay = True
+    return {'iceServers': servers, 'relayConfigured': relay, 'ttlSeconds': ttl}
+
 
 @app.post('/api/auth/register')
 def register(body: Register, request: Request, d:Session=Depends(db)):
