@@ -301,9 +301,74 @@ function modal(title,content){$('modalTitle').textContent=title;$('modalContent'
 function closeModal(){$('modalLayer').classList.add('hidden');$('modalContent').replaceChildren()}
 function findFriends(){modal('Найти пользователя',`<p>Введите уникальный ID, например <strong>MP1234567890</strong>.</p><label>ID пользователя<input id="friendId" placeholder="MP..." maxlength="24"/></label><button class="button" id="findUserBtn">Найти</button><div id="findResult"></div>`);$('findUserBtn').onclick=async()=>{
  const id=$('friendId').value.trim().toUpperCase();try{const u=await api('/users/'+encodeURIComponent(id));const b=$('findResult');b.innerHTML=`<div class="user-line">${avatar(u.avatar,u.online)}<div><strong>${esc(u.nick)}</strong><div class="secondary">${esc(u.id)}</div></div><button id="inviteBtn">Добавить</button></div>`;$('inviteBtn').onclick=async()=>{try{const r=await api('/friends/request',{method:'POST',body:{target_id:u.id}});toast(r.state==='accepted'?'Теперь вы друзья':'Заявка отправлена');closeModal();refreshAll()}catch(e){toast(errorText(e))}}}catch(e){toast(errorText(e))}};}
-function openFriend(f){modal(f.nick,`<p><strong>ID:</strong> ${esc(f.id)}<br><strong>Статус:</strong> ${f.online?'В сети':'Не в сети'}<br>${esc(f.description)}</p><button id="openDm" class="button">Открыть переписку</button><button id="blockFriend" class="button outlined">Заблокировать</button>`);
- $('openDm').onclick=async()=>{try{const c=await api('/dm/'+encodeURIComponent(f.id),{method:'POST'});closeModal();await refreshAll();renderTab('chats');selectChat(c.id)}catch(e){toast(errorText(e))}};
- $('blockFriend').onclick=async()=>{if(!confirm('Заблокировать пользователя?'))return;try{await api('/users/'+encodeURIComponent(f.id)+'/block',{method:'POST'});closeModal();await refreshAll();toast('Пользователь заблокирован')}catch(e){toast(errorText(e))}}}
+async function openUserProfile(id){
+ try{const u=await api('/users/'+encodeURIComponent(id));showUserProfile(u)}
+ catch(e){toast(errorText(e))}
+}
+function showUserProfile(u){
+ const mine=u.id===state.me?.id;
+ const isFriend=state.friends.some(f=>f.id===u.id);
+ let html='<div class="profile-hero"><div class="profile-hero-avatar">'+
+  (u.avatar==='📷'?'<img src="/api/avatars/'+encodeURIComponent(u.id)+'" alt="Аватар">':esc(u.avatar||'◉'))+
+  '</div><div class="profile-hero-name"><h3>'+esc(u.nick)+'</h3><p>'+
+  esc(u.description||'Пользователь MPOL')+'</p><p class="secondary">ID: '+
+  esc(u.id)+'</p><p class="secondary">'+(u.online?'● В сети':'Не в сети')+'</p></div></div>';
+ if(isFriend&&!mine)html+='<button id="openDmProfile" class="button">Открыть переписку</button>';
+ if(!mine)html+='<button id="blockUserProfile" class="button outlined">Заблокировать для себя</button>';
+ if(state.me?.is_developer&&!mine)html+='<section class="moderation-panel"><button type="button" class="button outlined" id="openModeration">⚑ Модерация</button></section>';
+ modal('Профиль пользователя',html);
+ $('openDmProfile')?.addEventListener('click',async()=>{
+  try{const c=await api('/dm/'+encodeURIComponent(u.id),{method:'POST'});
+   closeModal();await refreshAll();renderTab('chats');await selectChat(c.id)}
+  catch(e){toast(errorText(e))}
+ });
+ $('blockUserProfile')?.addEventListener('click',async()=>{
+  if(!confirm('Заблокировать '+u.nick+' только для себя?'))return;
+  try{await api('/users/'+encodeURIComponent(u.id)+'/block',{method:'POST'});
+   closeModal();await refreshAll();toast('Пользователь заблокирован для вас')}
+  catch(e){toast(errorText(e))}
+ });
+ $('openModeration')?.addEventListener('click',()=>openModerationPanel(u));
+}
+async function openModerationPanel(u){
+ if(!state.me?.is_developer)return;
+ try{
+  const info=await api('/developer/users/'+encodeURIComponent(u.id)+'/status');
+  const isBanned=info.state==='banned',isDeleted=info.state==='deleted';
+  let html='<p class="secondary">Аккаунт '+esc(u.nick)+' · ID: '+esc(u.id)+'</p>';
+  if(isDeleted)html+='<p class="error">Аккаунт удалён</p>';
+  else{
+   html+='<p class="secondary">Статус: '+(isBanned?'Забанен':'Активен')+'</p>';
+   if(isBanned)html+='<button id="moderationUnban" class="button outlined">Разбанить пользователя</button>';
+   else html+='<label>Причина бана<input id="moderationReason" maxlength="300" placeholder="Причина блокировки"></label><button id="moderationBan" class="button outlined">Забанить пользователя</button>';
+   html+='<div class="moderation-danger"><p>Удаление необратимо. Пароль, личные данные и доступ аккаунта будут удалены. Чужие переписки сохранятся.</p><label>Введите точный ID для подтверждения<input id="moderationConfirm" maxlength="24" placeholder="'+esc(u.id)+'"></label><button id="moderationDelete" class="button danger">Удалить аккаунт</button></div>';
+  }
+  modal('Модерация · '+u.nick,html);
+  $('moderationBan')?.addEventListener('click',async()=>{
+   const reason=$('moderationReason').value.trim();
+   if(reason.length<3){toast('Укажите причину бана');return}
+   if(!confirm('Забанить '+u.id+'? Все его активные сессии будут завершены.'))return;
+   try{await api('/developer/users/'+encodeURIComponent(u.id)+'/ban',{method:'POST',body:{reason}});
+    toast('Аккаунт забанен');openModerationPanel(u)}
+   catch(e){toast(errorText(e))}
+  });
+  $('moderationUnban')?.addEventListener('click',async()=>{
+   if(!confirm('Разбанить '+u.id+'?'))return;
+   try{await api('/developer/users/'+encodeURIComponent(u.id)+'/ban',{method:'DELETE'});
+    toast('Аккаунт разбанен');openModerationPanel(u)}
+   catch(e){toast(errorText(e))}
+  });
+  $('moderationDelete')?.addEventListener('click',async()=>{
+   const id=$('moderationConfirm').value.trim();
+   if(id!==u.id){toast('Введите точный ID аккаунта');return}
+   if(!confirm('Безвозвратно удалить аккаунт '+u.id+'? Это нельзя отменить.'))return;
+   try{await api('/developer/users/'+encodeURIComponent(u.id),{method:'DELETE',body:{confirm_id:id}});
+    closeModal();await refreshAll();toast('Аккаунт удалён')}
+   catch(e){toast(errorText(e))}
+  });
+ }catch(e){toast(errorText(e))}
+}
+function openFriend(f){openUserProfile(f.id)}
 function createGroup(){const options=state.friends.map(f=>`<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-add-member="${esc(f.id)}">${esc(f.nick)}</label>`).join('');
  modal('Создать группу',`<p>Групповой чат для друзей.</p><label>Название группы<input id="groupName" maxlength="80" placeholder="Например, Наша команда"></label><div class="secondary">Добавить участников</div><div class="list-mini">${options||'<p>Сначала добавьте друзей</p>'}</div><button id="makeGroup" class="button">Создать группу</button>`);
  $('makeGroup').onclick=async()=>{const name=$('groupName').value.trim(),members=[...document.querySelectorAll('[data-add-member]:checked')].map(x=>x.dataset.addMember);try{const c=await api('/groups',{method:'POST',body:{name,members}});closeModal();await refreshAll();renderTab('groups');selectChat(c.id)}catch(e){toast(errorText(e))}};}
