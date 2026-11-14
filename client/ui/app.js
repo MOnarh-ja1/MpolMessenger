@@ -307,24 +307,31 @@ setInterval(()=>{if(state.me)refreshRequests()},12000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.me)refreshAll()});
 window.addEventListener('focus',()=>{if(state.me)refreshRequests()});
 
-function checkRequiredExeUpdate(){
+async function checkRequiredExeUpdate(){
  const params=new URLSearchParams(location.search);
  const version=params.get('mpol_client');
  const appWindow=(window.matchMedia?.('(display-mode: standalone)').matches||
   window.matchMedia?.('(display-mode: minimal-ui)').matches||navigator.standalone===true);
  if(location.hostname!=='mpol-messenger-api.onrender.com')return;
  if(!appWindow&&!version)return;
- if(version==='2.1.0')return;
- // The old EXE did not include an updater: its hosted UI can still show
- // a blocking version notice. Browsers cannot silently execute downloads.
+ let manifest;
+ try{manifest=await api('/windows-update')}catch{return}
+ const latest=String(manifest?.version||'');
+ if(!/^\\d+\\.\\d+\\.\\d+$/.test(latest))return;
+ const parts=x=>x.split('.').map(v=>Number(v));
+ const old=version&&/^\\d+\\.\\d+\\.\\d+$/.test(version)?parts(version):[0,0,0];
+ const now=parts(latest);
+ const outdated=old.some((v,i)=>v!==now[i]&&old.slice(0,i).every((prev,j)=>prev===now[j])&&v<now[i]);
+ if(!outdated)return;
+ const link='https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v'+latest+'/MpolMessenger.exe';
  const layer=document.createElement('div');
  layer.className='mpol-required-update';
  layer.innerHTML='<div class="mpol-update-card"><div class="mpol-update-label">MPOL · ОБНОВЛЕНИЕ</div>'+
- '<h2>Требуется новая версия</h2>'+
- '<p>Вышел Mpol Messenger 2.1.0. Исправлены звонки, настройки профиля, аватары и удаление сообщений.</p>'+
- '<p>Скачайте новый EXE, закройте старое окно и запустите скачанную версию. Аккаунт и переписки останутся на сервере.</p>'+
- '<a class="mpol-update-download" href="https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.1.0/MpolMessenger.exe" target="_blank" rel="noopener">Скачать обновление EXE ↗</a>'+
- '<small>Браузер по правилам Windows не может автоматически открыть скачанный EXE.</small></div>';
+ '<h2>Требуется новая версия '+esc(latest)+'</h2>'+
+ '<p>Обновлены чаты, звонки, исправлены ошибки отображения и стабильности.</p>'+
+ '<p>Скачайте EXE с GitHub, закройте старое окно и запустите новый файл. Аккаунты и переписки останутся на сервере.</p>'+
+ '<a class="mpol-update-download" href="'+link+'" target="_blank" rel="noopener">Скачать обновление EXE ↗</a>'+
+ '<small>Старые EXE не могут самостоятельно запускать скачанные программы. Автоматическая проверка и установка с подтверждением предусмотрены в новых версиях.</small></div>';
  document.body.append(layer);
 }
 checkRequiredExeUpdate();
