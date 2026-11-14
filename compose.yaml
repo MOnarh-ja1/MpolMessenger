@@ -14,9 +14,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
   api:
-    build: ./server
+    build:
+      context: .
+      dockerfile: server/Dockerfile
     restart: unless-stopped
     environment:
+      MPOL_REQUIRE_PERSISTENT_DB: "1"
       MPOL_DATABASE_URL: postgresql+psycopg://mpol:${MPOL_DB_PASSWORD}@db:5432/mpol
       MPOL_RECOVERY_SECRET: ${MPOL_RECOVERY_SECRET:?Define MPOL_RECOVERY_SECRET in .env}
       MPOL_SMTP_HOST: ${MPOL_SMTP_HOST:-}
