@@ -1,6 +1,6 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' wss: ws://127.0.0.1:* ws://localhost:*; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'"/>
+<html lang="ru"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/><meta name="theme-color" content="#080809"/><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' wss: ws://127.0.0.1:* ws://localhost:*; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'"/>
 <title>MPOL Messenger</title><link rel="icon" href="/icon.png"><link rel="stylesheet" href="/style.css"></head>
 <body>
 <div class="ambient"></div>
@@ -44,7 +44,7 @@
   </aside>
   <main class="conversation">
     <div id="emptyChat" class="empty-state"><div class="empty-logo">M<span>.</span></div><h2>Ваше пространство общения</h2><p>Выберите диалог или найдите друга по ID, чтобы начать переписку.</p><button id="emptyFind" class="button outlined">Найти друзей <span>↗</span></button></div>
-    <div id="openedChat" class="opened-chat hidden"><header class="conv-header"><div class="conv-user"><div class="avatar" id="chatAvatar">◉</div><div><h3 id="chatName">Имя</h3><span id="chatPresence">Личные сообщения</span></div></div><div class="conv-top-actions"><button id="voiceCall" title="Голосовой звонок">☎</button><button id="videoCall" title="Видеозвонок">▣</button><button id="archiveChat" title="В архив">⇣</button><button id="searchMessages" title="Поиск в переписке" aria-label="Поиск в переписке"><img class="mpol-header-search-icon" src="/icons/search.webp" alt="" draggable="false"></button><button id="chatInfo" title="Информация">•••</button></div></header>
+    <div id="openedChat" class="opened-chat hidden"><header class="conv-header"><div class="conv-user"><div class="avatar" id="chatAvatar">◉</div><div><h3 id="chatName">Имя</h3><span id="chatPresence">Личные сообщения</span></div></div><div class="conv-top-actions"><button id="voiceCall" type="button" title="Голосовой звонок" aria-label="Голосовой звонок">☎</button><button id="videoCall" type="button" title="Видеозвонок" aria-label="Видеозвонок">▣</button><button id="archiveChat" title="В архив">⇣</button><button id="searchMessages" title="Поиск в переписке" aria-label="Поиск в переписке"><img class="mpol-header-search-icon" src="/icons/search.webp" alt="" draggable="false"></button><button id="chatInfo" title="Информация">•••</button></div></header>
       <div id="emojiPalette" class="emoji-palette hidden" aria-label="Выбор эмодзи"></div>
       <div id="messageSearchBar" class="message-search hidden"><input id="messageSearchInput" placeholder="Поиск по истории сообщений…"><button id="messageSearchClear">✕</button></div>
       <div id="messages" class="messages"></div><div id="typingIndicator" class="typing-indicator"></div><div id="replyChip" class="reply-chip hidden"><span id="replyText"></span><button id="clearReply">×</button></div>
@@ -61,7 +61,7 @@
     <div class="call-tag">MPOL · ЗВОНОК</div>
     <h2 id="callTitle">Вызов</h2><p id="callStatus">Соединение…</p>
     <div class="call-video-area"><video id="remoteVideo" autoplay playsinline></video><video id="localVideo" autoplay muted playsinline></video></div>
-    <audio id="remoteAudio" autoplay></audio><div id="callTimer">00:00</div><p id="callQuality" role="status" aria-live="polite" class="call-quality">Ожидаем подключения…</p>
+    <audio id="remoteAudio" autoplay playsinline></audio><div id="callTimer">00:00</div><p id="callQuality" role="status" aria-live="polite" class="call-quality">Ожидаем подключения…</p>
     <div class="call-accept-controls"><button id="acceptCall">Принять</button><button id="declineCall">Отклонить</button></div>
     <div class="call-active-controls hidden"><button id="muteMic">Микрофон</button><button id="toggleCamera">Камера</button><button id="shareScreen">Экран</button><button id="endCall" class="danger-btn">Завершить</button></div>
     <div class="call-audio-settings"><label><input id="noiseSuppression" type="checkbox" checked> Шумоподавление (если речь обрывается — отключите)</label>
