@@ -90,12 +90,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v2.2.0"
+          $tag = "v2.2.1"
           $assets = @("MpolMessenger.exe", "MpolMessenger_Full_Project.zip")
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $tag $assets --title "MPOL Messenger 2.2.0 — Correct Chat Sides, F11 Layout and Improved Voice Playback" --notes "MPOL 2.2 improves per-window account isolation, correct sender ownership (own messages right, others left), visible authors, safe delete controls, responsive F11/windowed layout, stable remote audio stream with reduced video bandwidth and connection diagnostics. Voice calls are STUN-only: no TURN relay yet, so some networks can still fail. Not end-to-end encrypted or security audited." --prerelease --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
+            gh release create $tag $assets --title "MPOL Messenger 2.2.1 — Four New MPOL Black Navigation Icons" --notes "MPOL Messenger 2.2.1 includes four new glossy black navigation icons supplied by the designer: Messages, Friends, Friend Requests and Search. Icons optimized in transparent WebP, responsive dark UI, and working online people search; existing Neon accounts/chats preserved." --prerelease --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
           }
           if ($LASTEXITCODE -ne 0) { throw "GitHub release upload failed" }
