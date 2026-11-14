@@ -6,19 +6,23 @@ let callTick=null;
 let callSoundInterval=null,callAudioContext=null;
 // Browser noise suppression / automatic gain can gate quiet syllables on some PCs.
 // Start with unprocessed speech and allow the listener to enable suppression.
-let callNoiseEnabled=localStorage.getItem('mpol_call_denoise')==='1';
+let callNoiseEnabled=localStorage.getItem('mpol_call_denoise')!=='0';
 let callQualityTick=null;
 function callAudioConstraints(){return {echoCancellation:true,noiseSuppression:callNoiseEnabled,
- autoGainControl:false,channelCount:{ideal:1},sampleRate:{ideal:48000}}}
+ autoGainControl:true,channelCount:{ideal:1},sampleRate:{ideal:48000}}}
 async function measureCallQuality(){
  const c=currentCall;if(!c?.pc||c.pc.connectionState!=='connected')return;
  try{
   const stats=await c.pc.getStats();if(currentCall!==c)return;
-  let received=0,lost=0,jitter=0;
+  let received=0,lost=0,jitter=0,videoWidth=0,videoHeight=0,videoFps=0;
   stats.forEach(r=>{
    if(r.type==='inbound-rtp'&&(r.kind==='audio'||r.mediaType==='audio')&&!r.isRemote){
     received+=Number(r.packetsReceived||0);lost+=Math.max(0,Number(r.packetsLost||0));
     jitter=Math.max(jitter,Number(r.jitter||0));
+   }
+   if(r.type==='outbound-rtp'&&(r.kind==='video'||r.mediaType==='video')){
+    videoWidth=Number(r.frameWidth||0);videoHeight=Number(r.frameHeight||0);
+    videoFps=Number(r.framesPerSecond||0);
    }
   });
   const quality=$call('callQuality');
@@ -31,7 +35,9 @@ async function measureCallQuality(){
    quality.textContent='Нестабильный интернет: возможны пропуски слов. Потери '+Math.round(lost/total*100)+'%';
    quality.classList.add('warning');
   }else{
-   quality.textContent='Аудиоканал подключён · '+Math.round(lost/total*100)+'% потерь';
+   const cameraInfo=c.mode==='video'&&videoWidth&&videoHeight?
+    ' · камера '+videoWidth+'×'+videoHeight+(videoFps?' · '+Math.round(videoFps)+' FPS':''):'';
+   quality.textContent='Аудиоканал подключён · '+Math.round(lost/total*100)+'% потерь'+cameraInfo;
    quality.classList.remove('warning');
   }
  }catch{}
@@ -109,11 +115,14 @@ async function loadCallIce(call){
  call.iceServers=Array.isArray(config?.iceServers)&&config.iceServers.length?
   config.iceServers:MPOL_FALLBACK_ICE;
  call.relayConfigured=!!config?.relayConfigured;
+ call.relayProvider=String(config?.relayProvider||'stun-only');
  if(!call.relayConfigured){
   $call('callQuality').textContent='На сервере пока нет TURN-релея. В другой мобильной сети звонок может не соединиться.';
   $call('callQuality').classList.add('warning');
  }else{
-  $call('callQuality').textContent='TURN указан в настройках сервера · проверяем соединение…';
+  $call('callQuality').textContent=call.relayProvider==='metered-openrelay-public'?
+   'Подключаем бесплатный TURN · связь зависит от сети и лимита релея…':
+   'Подключаем TURN-сервер · проверяем соединение…';
   $call('callQuality').classList.remove('warning');
  }
  return true;
@@ -141,7 +150,8 @@ function callLayout(){
 }
 async function getLocalCallMedia(mode){
  if(!navigator.mediaDevices?.getUserMedia)throw Error('Микрофон/камера недоступны. Нужен HTTPS и разрешение пользователя.');
- return navigator.mediaDevices.getUserMedia({audio:callAudioConstraints(),video:mode==='video'?{width:{ideal:640},height:{ideal:360},frameRate:{ideal:15,max:20}}:false});
+ return navigator.mediaDevices.getUserMedia({audio:callAudioConstraints(),video:mode==='video'?
+  {width:{ideal:1280},height:{ideal:720},frameRate:{ideal:24,max:30}}:false});
 }
 async function beginCall(mode){
  if(currentCall)return toast('У вас уже есть активный звонок');
@@ -167,11 +177,14 @@ function createPeer(){
   const sender=pc.addTrack(t,c.stream);
   if(t.kind==='audio')t.onended=()=>{if(currentCall===c)recoverMicrophone()};
   if(t.kind==='video'){
-   // Keep camera bandwidth modest; prioritise intelligible audio on slow Wi-Fi.
+   // 720p capable, and 5x previous video bitrate ceiling (400kbps).
+   // WebRTC congestion control can send less when the network is poor.
    try{
     const params=sender.getParameters();
     if(params.encodings?.length){
-     params.encodings[0].maxBitrate=400000;
+     params.encodings[0].maxBitrate=2000000;
+     params.encodings[0].maxFramerate=30;
+     params.degradationPreference='balanced';
      sender.setParameters(params).catch(()=>{});
     }
    }catch{}
@@ -190,6 +203,9 @@ function createPeer(){
   // on each ontrack event was interrupting playback in Chrome/Edge app mode.
   if(!c.remoteStream.getTracks().some(t=>t.id===e.track.id))c.remoteStream.addTrack(e.track);
   const audio=$call('remoteAudio'),video=$call('remoteVideo');
+  // Never play local capture in a speaker; the remote stream is the sole
+  // audio playback path and camera preview must always remain muted.
+  $call('localVideo').muted=true;
   if(audio.srcObject!==c.remoteStream)audio.srcObject=c.remoteStream;
   audio.volume=Number($call('callVolume').value)/100;
   audio.muted=false;
