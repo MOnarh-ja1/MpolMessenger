@@ -7,11 +7,15 @@ const state = {me:null,chats:[],friends:[],requests:[],requestsLoaded:false,mess
 function toast(text){const e=document.createElement('div');e.className='toast';e.textContent=text;$('toastZone').append(e);setTimeout(()=>e.remove(),4000)}
 function errorText(err){return String(err?.message||err||'Неизвестная ошибка')}
 async function api(path,{method='GET',body,form=false}={}){
- const opt={method,headers:{}};if(storage.token)opt.headers.Authorization='Bearer '+storage.token;
+ const token=storage.token;
+ const opt={method,headers:{}};if(token)opt.headers.Authorization='Bearer '+token;
  if(body!==undefined){if(form)opt.body=body;else{opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}}
  const res=await fetch('/api'+path,opt);let data;try{data=await res.json()}catch{data=null}
- if(!res.ok){if(res.status===401 && state.me){signout(false);throw Error('Сессия истекла. Войдите снова.')}
- throw Error(typeof data?.detail==='string'?data.detail:'Ошибка сервера ('+res.status+')')}
+ if(!res.ok){
+  if(res.status===401 && token && storage.token===token)signout(false);
+  const error=Error(typeof data?.detail==='string'?data.detail:'Ошибка сервера ('+res.status+')');
+  error.status=res.status;throw error;
+ }
  return data;
 }
 function timestr(v){if(!v)return '';const d=new Date(v);return d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}
@@ -21,7 +25,20 @@ function showLogin(){state.me=null;$('authScreen').classList.remove('hidden');$(
 function showApp(){ $('authScreen').classList.add('hidden');$('mainScreen').classList.remove('hidden');}
 // No window-level globals exposed: every on-screen action binds a real handler.
 async function serverHealth(){try{const r=await api('/health');$('serverStatus').textContent=r.ok?(r.temporary_storage?'Тестовый онлайн · данные могут исчезнуть':r.durable_database?'Онлайн · сообщения сохраняются':'Сервер доступен'):'Сервер не отвечает';$('serverStatus').previousElementSibling.classList.toggle('good',!!r.ok)}catch{$('serverStatus').textContent='Сервер недоступен';$('serverStatus').previousElementSibling.classList.remove('good')}}
-async function startup(){try{if(storage.token){state.me=await api('/me');showMain();return}}catch{storage.token=''}showLogin()}
+let starting=false;
+async function startup(){
+ if(starting||state.me)return;
+ if(!storage.token){showLogin();return}
+ starting=true;const token=storage.token;
+ try{
+  const me=await api('/me');
+  if(storage.token!==token||state.me)return;
+  state.me=me;await showMain();
+ }catch(e){
+  if(storage.token!==token)return;
+  showLogin();$('authError').textContent='Не удалось восстановить соединение. Сессия сохранена, повторим автоматически.';
+ }finally{starting=false}
+}
 async function showMain(){showApp();state.requests=[];state.requestsLoaded=false;$('myProfile').textContent=state.me.nick.slice(0,1).toUpperCase();$('myAccountId').textContent=state.me.id;applyScale();await refreshAll();wsConnect();renderTab('chats')}
 function setFriendRequests(req){
  const existing=new Set(state.requests.map(r=>r.request_id));
@@ -40,18 +57,21 @@ function setFriendRequests(req){
 let refreshingAll=null;
 async function refreshAll(){
  if(!state.me)return;
+ const token=storage.token;
  if(refreshingAll)return refreshingAll;
  refreshingAll=(async()=>{try{
   const [chats,friends,req]=await Promise.all([api('/chats'),api('/friends'),api('/friends/requests')]);
-  if(!state.me)return;
+  if(!state.me||storage.token!==token)return;
   state.chats=chats;state.friends=friends;setFriendRequests(req);renderList();
   if(state.active){const updated=chats.find(c=>c.id===state.active.id);if(updated){state.active=updated;updateHeader()}}
  }catch(e){if(state.me)toast(errorText(e))}})().finally(()=>{refreshingAll=null});
  return refreshingAll;
 }
+let requestsVersion=0;
 async function refreshRequests(){
  if(!state.me)return;
- try{const requests=await api('/friends/requests');if(!state.me)return;setFriendRequests(requests);if(state.tab==='notifications')renderList()}catch{}
+ const token=storage.token,version=++requestsVersion;
+ try{const requests=await api('/friends/requests');if(!state.me||token!==storage.token||version!==requestsVersion)return;setFriendRequests(requests);if(state.tab==='notifications')renderList()}catch{}
 }
 function renderTab(tab){state.tab=tab;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));
  $('listTitle').textContent=({chats:'Сообщения',friends:'Друзья',groups:'Группы',notifications:'Заявки в друзья',settings:'Настройки'})[tab]||'Сообщения';
@@ -77,7 +97,7 @@ function renderList(){let filter=$('listSearch').value.trim().toLowerCase();cons
  const a=state.chats.filter(c=>(state.tab!=='groups'||c.is_group)&&c.name.toLowerCase().includes(filter));if(!a.length)root.innerHTML='<div class="list-blank"><strong>Диалогов пока нет</strong>Создайте чат или найдите друзей.</div>';
  for(const c of a){const el=document.createElement('button');el.className='chat-item'+(state.active?.id===c.id?' selected':'');el.innerHTML=avatar(c.avatar,c.online)+`<div class="chat-item-body"><div class="chat-item-head"><strong>${esc(c.name)}</strong><time>${datestr(c.last?.sent_at)}</time></div><div class="chat-item-preview">${esc(c.last?.deleted?'Сообщение удалено':c.last?.body|| (c.last?.attachment?'📎 '+c.last.attachment.name:'Новая переписка'))}</div></div>${c.unread?`<span class="count-badge">${c.unread}</span>`:''}`;el.onclick=()=>selectChat(c.id);root.append(el)}
 }
-async function selectChat(id){try{const c=state.chats.find(x=>x.id===id);if(!c)throw Error('Чат не найден');state.active=c;state.reply=null;replyUpdate();$('emptyChat').classList.add('hidden');$('openedChat').classList.remove('hidden');updateHeader();state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages();await api('/chats/'+encodeURIComponent(id)+'/read',{method:'POST'});state.active.unread=0;renderList();$('messageInput').focus()}catch(e){toast(errorText(e))}}
+async function selectChat(id){try{const c=state.chats.find(x=>x.id===id);if(!c)throw Error('Чат не найден');state.active=c;state.reply=null;$('messageSearchInput').value='';replyUpdate();$('emptyChat').classList.add('hidden');$('openedChat').classList.remove('hidden');updateHeader();state.messages=[];renderMessages();await loadMessages();if(state.active?.id!==id)return;await api('/chats/'+encodeURIComponent(id)+'/read',{method:'POST'});if(state.active?.id!==id)return;state.active.unread=0;renderList();$('messageInput').focus()}catch(e){toast(errorText(e))}}
 function updateHeader(){if(!state.active)return;const c=state.active;$('chatAvatar').textContent=c.avatar;$('chatName').textContent=c.name;$('chatPresence').textContent=c.is_group?c.members.length+' участников':c.online?'● В сети':'Не в сети'}
 function renderMessages(){const root=$('messages');root.replaceChildren();let lastDay='';const c=state.active;
  for(const m of state.messages){const day=new Date(m.sent_at).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});if(day!==lastDay){const label=document.createElement('div');label.className='day-divider';label.textContent=day;root.append(label);lastDay=day}
@@ -96,22 +116,41 @@ async function messageAction(action,m){if(action==='reply'){state.reply=m.id;rep
  if(action==='delete'&&confirm('Удалить это сообщение?')){try{await api('/messages/'+m.id,{method:'DELETE'});await loadMessages()}catch(e){toast(errorText(e))}}
 }
 function replyUpdate(){$('replyChip').classList.toggle('hidden',!state.reply);if(state.reply){const m=state.messages.find(x=>x.id===state.reply);$('replyText').textContent='↶ '+(m?.nick||'Сообщение')+': '+(m?.body.slice(0,90)||'') }}
-async function loadMessages(){if(!state.active)return;const id=state.active.id;state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages()}
+let messagesVersion=0,messageRevision=0;
+async function loadMessages(){
+ if(!state.active||!state.me)return;
+ const id=state.active.id,token=storage.token,version=++messagesVersion;
+ const search=$('messageSearchInput').value.trim();
+ const revision=messageRevision;
+ const messages=await api('/chats/'+encodeURIComponent(id)+'/messages'+(search?'?search='+encodeURIComponent(search):''));
+ if(!state.me||storage.token!==token||state.active?.id!==id||version!==messagesVersion)return;
+ // A live event may have arrived while this snapshot was being fetched.
+ if(revision!==messageRevision)return loadMessages();
+ state.messages=messages;renderMessages();
+}
+async function synchronize(){
+ if(!state.me)return;
+ await Promise.all([refreshAll(),refreshRequests(),loadMessages().catch(e=>toast(errorText(e)))]);
+}
 let sending=false;
 async function send(){const c=state.active;if(!c||sending)return;const body=$('messageInput').value.trim();if(!body)return;sending=true;$('sendBtn').disabled=true;
  try{await api('/chats/'+encodeURIComponent(c.id)+'/messages',{method:'POST',body:{body,reply_to:state.reply}});$('messageInput').value='';state.reply=null;replyUpdate();await loadMessages();await refreshAll()}catch(e){toast(errorText(e))}finally{sending=false;$('sendBtn').disabled=false}}
 async function attach(){if(!state.active)return;$('fileInput').click()}
 async function uploadFile(file){if(!file||!state.active)return;if(file.size>12*1024*1024){toast('Максимальный размер файла — 12 МБ');return}const data=new FormData();data.append('file',file);try{toast('Загрузка файла…');const a=await api('/chats/'+encodeURIComponent(state.active.id)+'/attachments',{method:'POST',body:data,form:true});await api('/chats/'+encodeURIComponent(state.active.id)+'/messages',{method:'POST',body:{body:'',attachment_id:a.id}});await loadMessages();await refreshAll();toast('Файл отправлен')}catch(e){toast(errorText(e))}$('fileInput').value=''}
-function wsConnect(){if(!storage.token||!state.me)return;try{const proto=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(proto+'//'+location.host+'/ws');state.ws=ws;
- ws.onopen=()=>{state.retry=0;ws.send(JSON.stringify({type:'auth',token:storage.token}))};
- ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch{return}
-  if(m.type==='authenticated'||m.type==='friend_request'){refreshAll().catch(()=>{});return}
+let reconnectTimer=0;
+function wsConnect(){if(!storage.token||!state.me||state.ws?.readyState===WebSocket.OPEN||state.ws?.readyState===WebSocket.CONNECTING)return;clearTimeout(reconnectTimer);try{const proto=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(proto+'//'+location.host+'/ws');state.ws=ws;
+ ws.onopen=()=>{if(state.ws!==ws||!state.me){ws.close();return}ws.send(JSON.stringify({type:'auth',token:storage.token}))};
+ ws.onmessage=async e=>{if(state.ws!==ws||!state.me)return;let m;try{m=JSON.parse(e.data)}catch{return}
+  if(!m||typeof m!=='object')return;
+  if(m.type==='authenticated'){state.retry=0;await synchronize();return}
+  if(m.type==='friend_request'){await refreshRequests();return}
+  if(m.type==='message'||m.type==='message_updated')messageRevision++;
   if(m.type==='message'){if(m.message.user_id!==state.me.id){notifyNewMessage(m.message)}if(state.active?.id===m.message.chat_id){if(!state.messages.some(x=>x.id===m.message.id)){state.messages.push(m.message);renderMessages()}api('/chats/'+state.active.id+'/read',{method:'POST'}).catch(()=>{})}refreshAll().catch(()=>{})}
   if(m.type==='message_updated'){if(state.active?.id===m.message.chat_id){const idx=state.messages.findIndex(x=>x.id===m.message.id);if(idx>=0){state.messages[idx]=m.message;renderMessages()}}refreshAll().catch(()=>{})}
   if(m.type==='chats_changed'||m.type==='friends_changed'||m.type==='presence'||m.type==='profile'||m.type==='read')refreshAll().catch(()=>{});
   if(m.type==='typing'&&state.active?.id===m.chat_id){$('typingIndicator').textContent='Собеседник печатает…';clearTimeout(state.typingTimer);state.typingTimer=setTimeout(()=>$('typingIndicator').textContent='',1300)}
  };
- ws.onclose=()=>{if(state.ws===ws&&state.me){const delay=Math.min(30000,1000*Math.pow(2,Math.min(5,state.retry++)));setTimeout(()=>{if(state.me)wsConnect()},delay)}};
+ ws.onclose=()=>{if(state.ws===ws&&state.me){const delay=Math.min(30000,1000*Math.pow(2,Math.min(5,state.retry++)));reconnectTimer=setTimeout(()=>{if(state.me&&state.ws===ws)wsConnect()},delay)}};
  ws.onerror=()=>{};
  }catch(e){toast('Не удалось подключить онлайн-канал')}}
 function notifyNewMessage(m){if(state.sound){try{const a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.type='sine';o.frequency.value=540;g.gain.value=.03;o.connect(g);g.connect(a.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.15);o.stop(a.currentTime+.15)}catch{}}
@@ -175,7 +214,7 @@ function changePassword(){modal('Изменить пароль',`<label>Теку
 async function configServer(){if(location.protocol==='https:' && !['localhost','127.0.0.1'].includes(location.hostname)){modal('Сервер MPOL','<p>Вы подключены к общему тестовому серверу MPOL. Данные могут исчезнуть после перезапуска сервера.</p>');return;}let data={url:''};try{const r=await fetch('/__config');data=await r.json()}catch{};
  modal('Подключение к серверу',`<p>Для общения через интернет обоим пользователям нужен один и тот же доступный сервер MPOL. Для локальной проверки используйте <strong>http://127.0.0.1:8000</strong>.</p><label>Адрес сервера<input id="serverUrl" placeholder="https://chat.example.com" value="${esc(data.url||'')}"></label><button class="button" id="saveServer">Сохранить и переподключиться</button><p class="secondary">В интернете используйте HTTPS с настоящим сертификатом. Указанный сервер может получать ваши сообщения.</p>`);
  $('saveServer').onclick=async()=>{try{const r=await fetch('/__config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('serverUrl').value.trim()})});const x=await r.json();if(!r.ok)throw Error(x.error||'Ошибка адреса');storage.token='';location.reload()}catch(e){toast(errorText(e))}}}
-async function signout(send){if(send)api('/auth/logout',{method:'POST'}).catch(()=>{});storage.token='';state.me=null;state.active=null;state.requests=[];state.requestsLoaded=false;state.ws?.close();state.ws=null;closeModal();showLogin()}
+async function signout(send){clearTimeout(reconnectTimer);messagesVersion++;requestsVersion++;if(send)api('/auth/logout',{method:'POST'}).catch(()=>{});storage.token='';state.me=null;state.active=null;state.messages=[];state.chats=[];state.friends=[];state.requests=[];state.requestsLoaded=false;state.ws?.close();state.ws=null;closeModal();showLogin()}
 function openSearch(){findFriends()}
 $('toggleAuth').onclick=()=>{state.register=!state.register;$('registerFields').classList.toggle('hidden',!state.register);$('confirmFields').classList.toggle('hidden',!state.register);$('authSubtitle').textContent=state.register?'Создайте аккаунт и найдите друзей.':'Добро пожаловать. Войдите в свой аккаунт.';$('authSubmit').firstChild.textContent=state.register?'Зарегистрироваться ':'Войти ';$('toggleAuth').innerHTML=state.register?'Уже есть аккаунт? <b>Войти</b>':'Нет аккаунта? <b>Создать аккаунт</b>';$('password').setAttribute('autocomplete',state.register?'new-password':'current-password')};
 $('authForm').onsubmit=async e=>{e.preventDefault();$('authError').textContent='';$('authSubmit').disabled=true;try{const login=$('login').value.trim(),password=$('password').value;if(state.register&&password!==$('password2').value)throw Error('Пароли не совпадают');const body=state.register?{nick:$('nick').value,login,password,email:$('email').value||null}:{login,password};const data=await api(state.register?'/auth/register':'/auth/login',{method:'POST',body});storage.token=data.token;state.me=data.user;await showMain()}catch(e){$('authError').textContent=errorText(e)}finally{$('authSubmit').disabled=false}};
@@ -185,12 +224,13 @@ $('emptyFind').onclick=findFriends;document.querySelectorAll('.rail-btn[data-tab
 $('listSearch').oninput=renderList;$('composer').onsubmit=e=>{e.preventDefault();send()};$('attachBtn').onclick=attach;$('fileInput').onchange=e=>uploadFile(e.target.files[0]);
 $('emojiBtn').onclick=()=>{const input=$('messageInput');input.value+=' 🙂';input.focus()};$('messageInput').oninput=()=>{if(state.ws?.readyState===WebSocket.OPEN&&state.active){state.ws.send(JSON.stringify({type:'typing',chat_id:state.active.id}))}};
 $('clearReply').onclick=()=>{state.reply=null;replyUpdate()};$('searchMessages').onclick=()=>{$('messageSearchBar').classList.toggle('hidden');$('messageSearchInput').focus()};
-$('messageSearchInput').oninput=async e=>{try{if(!state.active)return;state.messages=await api('/chats/'+state.active.id+'/messages'+(e.target.value?'?search='+encodeURIComponent(e.target.value):''));renderMessages()}catch(err){toast(errorText(err))}};
+$('messageSearchInput').oninput=()=>loadMessages().catch(e=>toast(errorText(e)));
 $('messageSearchClear').onclick=()=>{$('messageSearchInput').value='';$('messageSearchBar').classList.add('hidden');loadMessages()};$('chatInfo').onclick=chatDetails;
 $('closeModal').onclick=closeModal;$('modalBackdrop').onclick=closeModal;document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
 setInterval(()=>{if(state.ws?.readyState===WebSocket.OPEN)state.ws.send(JSON.stringify({type:'ping'}));if(location.hostname==='127.0.0.1'||location.hostname==='localhost')fetch('/__ping').catch(()=>{})},15000);
-setInterval(()=>{if(!state.me)serverHealth()},10000);
+setInterval(()=>{if(!state.me){if(storage.token)startup();else serverHealth()}},10000);
 setInterval(()=>{if(state.me)refreshRequests()},12000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.me)refreshAll()});
-window.addEventListener('focus',()=>{if(state.me)refreshRequests()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.me)synchronize()});
+window.addEventListener('focus',()=>{if(state.me)synchronize()});
+window.addEventListener('online',()=>{if(state.me){wsConnect();synchronize()}else startup()});
 startup();

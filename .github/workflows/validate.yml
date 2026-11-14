@@ -1,0 +1,37 @@
+name: Validate recovery fixes
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: client/go.mod
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Client regression tests
+        run: |
+          node --check client/ui/app.js
+          node --test tests/test_client_recovery.cjs
+      - name: Server regression tests
+        run: |
+          python -m pip install -r server/requirements.txt httpx
+          python tests/test_friend_realtime.py
+      - name: Build Windows client
+        working-directory: client
+        run: go build -trimpath -ldflags "-H windowsgui -s -w" -o ../MpolMessenger.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MpolMessenger-recovery-Windows-x64
+          path: MpolMessenger.exe
+          if-no-files-found: error

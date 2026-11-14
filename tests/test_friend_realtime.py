@@ -67,9 +67,24 @@ def run():
             assert [x["id"] for x in client.get("/api/friends", headers=alice_headers).json()] == [bob_id]
             assert [x["id"] for x in client.get("/api/friends", headers=bob_headers).json()] == [alice_id]
             assert client.get("/api/friends/requests", headers=bob_headers).json() == []
+            chat = client.post('/api/dm/' + bob_id, headers=alice_headers).json()['id']
+            sent = client.post('/api/chats/' + chat + '/messages', headers=alice_headers,
+                               json={'body': 'Message retained across reconnect'})
+            assert sent.status_code == 200, sent.text
+            message_id = sent.json()['id']
             print("PASS: friend request delivered over WebSocket without re-login; accepted friendship persisted.")
         # Windows keeps the SQLite file locked while SQLAlchemy connections remain pooled.
         engine.dispose()
+        with TestClient(app) as restarted:
+            assert restarted.get('/api/me', headers=bob_headers).json()['id'] == bob_id
+            assert restarted.get('/api/friends', headers=bob_headers).json()[0]['id'] == alice_id
+            history = restarted.get('/api/chats/' + chat + '/messages', headers=bob_headers)
+            assert history.status_code == 200, history.text
+            assert history.json()[0]['id'] == message_id
+            assert restarted.get('/').status_code == 200
+            assert restarted.get('/app.js').status_code == 200
+        engine.dispose()
+        print('PASS: sessions, friendship and message history survive database connection disposal and app lifespan restart; UI is served.')
 
 
 if __name__ == "__main__":
