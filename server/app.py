@@ -756,7 +756,7 @@ async def websocket(ws:WebSocket):
                 cid=event.get('call_id')
                 payload=event.get('payload') or {}
                 if not isinstance(to,str) or not isinstance(cid,str) or len(cid)>60 or kind not in (
-                    'invite','accept','decline','busy','offer','answer','ice','hangup'):
+                    'invite','accept','decline','busy','offer','answer','ice','hangup','restart'):
                     continue
                 if not isinstance(payload,dict) or len(json.dumps(payload))>65000:continue
                 with SessionLocal() as d:
