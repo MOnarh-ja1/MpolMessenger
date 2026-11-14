@@ -1,0 +1,70 @@
+name: Build and publish MPOL Messenger (Windows x64)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "client/**"
+      - "server/**"
+      - "assets/**"
+      - "MpolMessenger.ico"
+      - ".github/workflows/windows-release.yml"
+      - "START_LOCAL.bat"
+      - "compose.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: client/go.mod
+          cache: false
+
+      - name: Build Windows executable
+        shell: pwsh
+        run: |
+          Push-Location client
+          go build -trimpath -ldflags "-H windowsgui -s -w" -o ../MpolMessenger.exe .
+          if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+          Pop-Location
+          if (!(Test-Path MpolMessenger.exe)) { throw "MpolMessenger.exe missing" }
+
+      - name: Package complete client/server project
+        shell: pwsh
+        run: |
+          $files = @("MpolMessenger.exe", "MpolMessenger.ico", "README.md", "Caddyfile", "START_LOCAL.bat", ".env.example", "compose.yaml", "server", "client", "assets", "tests") | Where-Object { Test-Path $_ }
+          Compress-Archive -Path $files -DestinationPath MpolMessenger_Full_Project.zip -Force
+          if (!(Test-Path MpolMessenger_Full_Project.zip)) { throw "ZIP missing" }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MPOL-Messenger-Windows-x64
+          path: |
+            MpolMessenger.exe
+            MpolMessenger_Full_Project.zip
+          if-no-files-found: error
+
+      - name: Publish beta release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "v0.1.0-beta"
+          $assets = @("MpolMessenger.exe", "MpolMessenger_Full_Project.zip")
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $tag $assets --title "MPOL Messenger 0.1 Beta" --notes "Windows beta build with local FastAPI server. Public messaging requires separate server hosting. Not production audited." --prerelease --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
+          }
+          if ($LASTEXITCODE -ne 0) { throw "GitHub release upload failed" }
