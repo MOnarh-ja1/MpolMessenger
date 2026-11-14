@@ -278,7 +278,7 @@ def ice_configuration(u: User = Depends(authed)):
     servers = [{'urls': ['stun:stun.cloudflare.com:3478',
                          'stun:stun.l.google.com:19302']}]
     urls = [v.strip() for v in os.getenv('MPOL_TURN_URLS', '').split(',') if v.strip()]
-    urls = [v for v in urls if re.fullmatch(r'turns?:[^\\s]{3,240}', v)][:6]
+    urls = [v for v in urls if re.fullmatch(r'turns?:[^\s]{3,240}', v)][:6]
     relay = False
     provider = 'stun-only'
     ttl = 0
