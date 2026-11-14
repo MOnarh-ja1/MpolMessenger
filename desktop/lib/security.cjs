@@ -18,7 +18,7 @@ function canOpenExternal(value) {
 }
 function safeFilename(filename) {
   const name = String(filename || 'MPOL-download')
-    .replace(/[<>:"/\\|?*\\x00-\\x1f]/g,'_')
+    .replace(/[<>:"\/\\|?*\x00-\x1f]/g,'_')
     .replace(/[. ]+$/g,'').slice(0,150);
   return name || 'MPOL-download';
 }
