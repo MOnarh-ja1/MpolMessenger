@@ -1,10 +1,14 @@
-> 🟢 **MPOL Messenger 2.2.1 опубликован:** [скачать EXE для Windows](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.2.1/MpolMessenger.exe) · [полный ZIP](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.2.1/MpolMessenger_Full_Project.zip) · [открыть веб-версию](https://mpol-messenger-api.onrender.com).
+> 🟢 **MPOL Messenger Desktop 2.3.0 — отдельное приложение без Edge:** [скачать новый EXE (110 МБ)](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.3.0-desktop/MpolMessenger.exe) · [страница выпуска](https://github.com/MOnarh-ja1/MpolMessenger/releases/tag/v2.3.0-desktop) · [открыть веб-версию](https://mpol-messenger-api.onrender.com).
+>
+> 🖥️ Новая версия собрана на **Electron** со встроенным Chromium: своё окно, собственная иконка Windows, запросы разрешения на микрофон/камеру, F11 и нативные загрузки. Оригинальные 4 иконки MPOL Black сохранены. [Инструкция и ограничения](desktop/README_RU.md).
+>
+> 📦 [Старая версия 2.2.1 (Edge)](https://github.com/MOnarh-ja1/MpolMessenger/releases/tag/v2.2.1) остаётся доступной отдельно; закрывайте её перед запуском нового EXE.
 >
 > ✅ Аккаунты, чаты и файлы теперь сохраняются в **отдельной базе PostgreSQL в Neon**; сервер приложения размещён на Render и может перезапускаться без удаления этих данных.
 >
 > ⚠️ Бета-версия: бесплатный Render может переходить в сон, восстановление пароля по email не настроено, нет сквозного шифрования или гарантированной доступности 24/7. Не используйте пароль от других аккаунтов и не храните чувствительную информацию.
 
-# MPOL MESSENGER · 2.2.1
+# MPOL MESSENGER · 2.3.0 Desktop
 
 Windows-клиент с чёрной темой MPOL BLACK и настоящим сервером. В preview добавлены голосовые сообщения, реакции, фотографии профиля, Избранное, архив и предварительные звонки WebRTC. Новое в 2.2.1: четыре пользовательские глянцевые иконки в MPOL BLACK («Сообщения», «Друзья», «Заявки», «Поиск») и работающая кнопка поиска; изображения оптимизированы для панели Windows. В версии 2.2: независимые входы в разных окнах, правильные сообщения справа/слева, исправление обрезания интерфейса при F11, стабильнее обработка аудио и диагностика качества звонка. [Список изменений и ограничений](CHANGELOG_2_2.md).
 
