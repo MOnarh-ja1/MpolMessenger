@@ -1,4 +1,4 @@
-> 🟢 **MPOL Messenger 3.0.0 — копирование, профиль собеседника и стабильность голосовых звонков:** [скачать Windows EXE (110 МБ)](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v3.0.0-desktop/MpolMessenger.exe) · [страница релиза](https://github.com/MOnarh-ja1/MpolMessenger/releases/tag/v3.0.0-desktop) · [открыть HTML](https://mpol-messenger-api.onrender.com/). Исправлены буфер обмена, профиль по нажатию на имя и активация голоса в Safari. Для новой HTML-версии необходим успешный деплой сервера Render; телефонные звонки требуют действующего TURN/HTTPS и разрешения микрофона.
+> 🟢 **MPOL Messenger Desktop 3.1.0 — подключение российского HTTPS-сервера:** [скачать EXE (110 МБ)](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v3.1.0-desktop/MpolMessenger.exe) · [страница релиза](https://github.com/MOnarh-ja1/MpolMessenger/releases/tag/v3.1.0-desktop) · [инструкция для РФ](DEPLOY_RU_NO_VPN.md). Код поддерживает работу через доступный без VPN сервер, но реальный российский хостинг ещё не подключён; старый Render-адрес может быть недоступен из РФ.
 
 ## MPOL Messenger 3.1 — доступ из России без VPN (после развёртывания сервера)
 
