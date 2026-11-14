@@ -46,6 +46,7 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright-core
           node tests/test_layout.cjs
+          node tests/test_auth_persistence.cjs
 
       - name: Set up Python for server tests
         uses: actions/setup-python@v5
