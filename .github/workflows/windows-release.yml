@@ -39,6 +39,7 @@ jobs:
           node --check client/ui/voice.js
           node --check client/ui/calls.js
           node tests/test_client_account_ownership.cjs
+          node tests/test_call_audio.cjs
 
       - name: Set up Python for server tests
         uses: actions/setup-python@v5
