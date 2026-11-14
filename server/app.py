@@ -230,7 +230,7 @@ def members_of(d: Session, cid: str):
 @app.get('/api/health')
 def health():
     is_temp = SQLITE and os.getenv('MPOL_EPHEMERAL_STORAGE') == '1'
-    return {'ok':True,'version':'0.2.0','temporary_storage':is_temp,'durable_database':not SQLITE}
+    return {'ok':True,'version':'0.2.1','temporary_storage':is_temp,'durable_database':not SQLITE}
 
 @app.post('/api/auth/register')
 def register(body: Register, request: Request, d:Session=Depends(db)):
@@ -388,8 +388,10 @@ async def request_friend(body:FriendRequest,u:User=Depends(authed),d:Session=Dep
         if old.from_id==x.id and old.to_id==u.id and old.state=='pending':
             old.state='accepted';d.commit();await emit([x.id,u.id],{'type':'friends_changed'});return {'ok':True,'state':'accepted'}
         raise HTTPException(409,'Заявка уже существует')
-    d.add(Friendship(from_id=u.id,to_id=x.id,state='pending'));d.commit()
-    await emit([x.id],{'type':'friends_changed'})
+    new_request=Friendship(from_id=u.id,to_id=x.id,state='pending')
+    d.add(new_request);d.commit()
+    # Deliver a targeted event to the recipient. The client also polls as a fallback.
+    await emit([x.id],{'type':'friend_request','request_id':new_request.id,'user':user_json(u)})
     return {'ok':True,'state':'pending'}
 
 @app.post('/api/friends/requests/{request_id}')
