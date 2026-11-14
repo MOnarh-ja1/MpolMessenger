@@ -15,15 +15,16 @@ import uuid
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 from typing import Any
 
 from argon2 import PasswordHasher
 from argon2.low_level import Type
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, UploadFile, File, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine, select, delete, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, LargeBinary, UniqueConstraint, create_engine, select, delete, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
 
 ROOT = Path(__file__).parent
@@ -31,6 +32,8 @@ DATABASE_URL = os.getenv("MPOL_DATABASE_URL", f"sqlite:///{ROOT / 'mpol.db'}")
 UPLOAD_DIR = Path(os.getenv("MPOL_UPLOAD_DIR", str(ROOT / 'uploads')))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 SQLITE = DATABASE_URL.startswith("sqlite")
+if SQLITE and os.getenv('MPOL_REQUIRE_PERSISTENT_DB') == '1':
+    raise RuntimeError('Online mode requires MPOL_DATABASE_URL pointing to PostgreSQL; refusing temporary SQLite storage.')
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if SQLITE else {}, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2, hash_len=32, salt_len=16, type=Type.ID)
@@ -120,6 +123,12 @@ class Attachment(Base):
     content_type: Mapped[str] = mapped_column(String(100))
     file_path: Mapped[str] = mapped_column(Text)
     size: Mapped[int] = mapped_column(Integer)
+
+class AttachmentBlob(Base):
+    """Binary attachments in PostgreSQL, independent of Render ephemeral disk."""
+    __tablename__ = 'attachment_blobs'
+    attachment_id: Mapped[str] = mapped_column(ForeignKey('attachments.id'), primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
 
 Base.metadata.create_all(engine)
 
@@ -219,7 +228,9 @@ def members_of(d: Session, cid: str):
     return list(d.scalars(select(Member.user_id).where(Member.chat_id==cid)).all())
 
 @app.get('/api/health')
-def health(): return {'ok':True,'version':'0.1.1','temporary_storage':os.getenv('MPOL_EPHEMERAL_STORAGE') == '1'}
+def health():
+    is_temp = SQLITE and os.getenv('MPOL_EPHEMERAL_STORAGE') == '1'
+    return {'ok':True,'version':'0.2.0','temporary_storage':is_temp,'durable_database':not SQLITE}
 
 @app.post('/api/auth/register')
 def register(body: Register, request: Request, d:Session=Depends(db)):
@@ -551,10 +562,16 @@ async def upload(chat_id:str,file:UploadFile=File(...),u:User=Depends(authed),d:
     data=await file.read(12*1024*1024+1)
     if not data or len(data)>12*1024*1024:raise HTTPException(413,'Файл должен быть от 1 байта до 12 МБ')
     if not valid_magic(ext,data):raise HTTPException(415,'Содержимое файла не соответствует формату')
-    fid=str(uuid.uuid4());path=UPLOAD_DIR/(fid+ext)
-    path.write_bytes(data)
-    a=Attachment(id=fid,chat_id=chat_id,owner_id=u.id,display_name=name,content_type=ALLOWED[ext],file_path=str(path),size=len(data))
-    d.add(a);d.commit()
+    fid=str(uuid.uuid4())
+    a=Attachment(id=fid,chat_id=chat_id,owner_id=u.id,display_name=name,content_type=ALLOWED[ext],file_path='',size=len(data))
+    d.add(a)
+    if SQLITE:
+        path=UPLOAD_DIR/(fid+ext)
+        path.write_bytes(data)
+        a.file_path=str(path)
+    else:
+        d.add(AttachmentBlob(attachment_id=fid,data=data))
+    d.commit()
     return {'id':fid,'name':name,'size':len(data),'type':ALLOWED[ext]}
 
 @app.get('/api/attachments/{attachment_id}')
@@ -562,6 +579,12 @@ def download(attachment_id:str,u:User=Depends(authed),d:Session=Depends(db)):
     a=d.get(Attachment,attachment_id)
     if not a:raise HTTPException(404,'Файл не найден')
     get_member(d,a.chat_id,u.id)
+    blob=d.get(AttachmentBlob,attachment_id) if not SQLITE else None
+    if blob:
+        filename=quote(a.display_name,safe='')
+        return Response(content=blob.data,media_type='application/octet-stream',headers={
+            'Content-Disposition':"attachment; filename*=UTF-8''"+filename,
+            'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'})
     path=Path(a.file_path)
     if not path.is_file():raise HTTPException(404,'Файл на сервере отсутствует')
     return FileResponse(path,media_type='application/octet-stream',filename=a.display_name,
