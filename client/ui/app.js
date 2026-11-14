@@ -311,10 +311,11 @@ window.addEventListener('focus',()=>{if(state.me)refreshRequests()});
 async function checkRequiredExeUpdate(){
  const params=new URLSearchParams(location.search);
  const version=params.get('mpol_client');
- const appWindow=(window.matchMedia?.('(display-mode: standalone)').matches||
-  window.matchMedia?.('(display-mode: minimal-ui)').matches||navigator.standalone===true);
+ // Only a verified desktop client carrying an explicit ?mpol_client=x.y.z
+ // may be prompted to download Windows binaries. iOS/Android home-screen
+ // apps use display-mode:standalone too; never treat that as Windows EXE.
  if(location.hostname!=='mpol-messenger-api.onrender.com')return;
- if(!appWindow&&!version)return;
+ if(!version || !/^\d+\.\d+\.\d+$/.test(version))return;
  let manifest;
  try{manifest=await api('/windows-update')}catch{return}
  const latest=String(manifest?.version||'');
