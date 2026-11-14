@@ -19,17 +19,21 @@
 </section>
 <div id="mainScreen" class="app hidden">
   <aside class="rail"><div class="rail-logo">M<span>.</span></div><div class="rail-stack">
-    <button class="rail-btn active" data-tab="chats" title="Сообщения"><span>▤</span></button>
-    <button class="rail-btn" data-tab="friends" title="Друзья"><span>♧</span></button>
-    <button class="rail-btn" data-tab="saved" title="Избранное"><span>☆</span></button>
-    <button class="rail-btn" data-tab="notifications" title="Заявки"><span>♢</span><span id="requestDot" class="request-badge hidden" aria-live="polite" aria-label="Заявки в друзья"></span></button>
-  </div><div class="rail-bottom"><button class="rail-btn" data-tab="settings" title="Настройки"><span>⚙</span></button><button id="myProfile" title="Мой профиль" class="self-avatar">M</button></div></aside>
+    <button class="rail-btn active" data-tab="chats" title="Сообщения" aria-label="Сообщения"><img class="mpol-nav-icon" src="/icons/messages.webp" alt="" draggable="false"></button>
+    <button class="rail-btn" data-tab="friends" title="Друзья" aria-label="Друзья"><img class="mpol-nav-icon" src="/icons/friends.webp" alt="" draggable="false"></button>
+    <button class="rail-btn" data-tab="notifications" title="Заявки в друзья" aria-label="Заявки в друзья"><img class="mpol-nav-icon" src="/icons/requests.webp" alt="" draggable="false"><span id="requestDot" class="request-badge hidden" aria-live="polite" aria-label="Заявки в друзья"></span></button>
+    <button class="rail-btn" id="railSearch" title="Поиск пользователей" aria-label="Поиск пользователей"><img class="mpol-nav-icon" src="/icons/search.webp" alt="" draggable="false"></button>
+  </div><div class="rail-bottom">
+    <button class="rail-btn rail-secondary" data-tab="saved" title="Избранное" aria-label="Избранное"><span>☆</span></button>
+    <button class="rail-btn rail-secondary" data-tab="settings" title="Настройки" aria-label="Настройки"><span>⚙</span></button>
+    <button id="myProfile" title="Мой профиль" class="self-avatar">M</button>
+  </div></aside>
   <aside class="chat-list-panel">
     <div class="list-header"><div class="overline">MPOL BLACK</div><h2 id="listTitle">Сообщения</h2><p id="listSubtitle">На связи с теми, кто важен</p></div>
     <div class="chat-filters" id="chatFilters">
       <button data-filter="all" class="active">Все</button><button data-filter="direct">Личные</button><button data-filter="groups">Группы</button><button data-filter="unread">Непрочит.</button><button data-filter="archive">Архив</button>
     </div>
-    <div class="list-search"><span>⌕</span><input id="listSearch" placeholder="Поиск…" autocomplete="off"></div>
+    <div class="list-search"><img class="mpol-search-icon" src="/icons/search.webp" alt="" draggable="false"><input id="listSearch" placeholder="Поиск…" autocomplete="off"></div>
     <div class="action-row"><button id="newMessage" class="soft-action">+ Новый чат</button><button id="createGroup" class="round-action" title="Создать группу">▦</button></div>
     <div id="chatList" class="chat-list"></div>
     <div id="myIdCard" class="account-id-card">
@@ -40,7 +44,7 @@
   </aside>
   <main class="conversation">
     <div id="emptyChat" class="empty-state"><div class="empty-logo">M<span>.</span></div><h2>Ваше пространство общения</h2><p>Выберите диалог или найдите друга по ID, чтобы начать переписку.</p><button id="emptyFind" class="button outlined">Найти друзей <span>↗</span></button></div>
-    <div id="openedChat" class="opened-chat hidden"><header class="conv-header"><div class="conv-user"><div class="avatar" id="chatAvatar">◉</div><div><h3 id="chatName">Имя</h3><span id="chatPresence">Личные сообщения</span></div></div><div class="conv-top-actions"><button id="voiceCall" title="Голосовой звонок">☎</button><button id="videoCall" title="Видеозвонок">▣</button><button id="archiveChat" title="В архив">⇣</button><button id="searchMessages" title="Поиск в переписке">⌕</button><button id="chatInfo" title="Информация">•••</button></div></header>
+    <div id="openedChat" class="opened-chat hidden"><header class="conv-header"><div class="conv-user"><div class="avatar" id="chatAvatar">◉</div><div><h3 id="chatName">Имя</h3><span id="chatPresence">Личные сообщения</span></div></div><div class="conv-top-actions"><button id="voiceCall" title="Голосовой звонок">☎</button><button id="videoCall" title="Видеозвонок">▣</button><button id="archiveChat" title="В архив">⇣</button><button id="searchMessages" title="Поиск в переписке" aria-label="Поиск в переписке"><img class="mpol-header-search-icon" src="/icons/search.webp" alt="" draggable="false"></button><button id="chatInfo" title="Информация">•••</button></div></header>
       <div id="emojiPalette" class="emoji-palette hidden" aria-label="Выбор эмодзи"></div>
       <div id="messageSearchBar" class="message-search hidden"><input id="messageSearchInput" placeholder="Поиск по истории сообщений…"><button id="messageSearchClear">✕</button></div>
       <div id="messages" class="messages"></div><div id="typingIndicator" class="typing-indicator"></div><div id="replyChip" class="reply-chip hidden"><span id="replyText"></span><button id="clearReply">×</button></div>
