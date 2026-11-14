@@ -2,7 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, x => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
 const storage = {get token(){return localStorage.getItem('mpol_token')||''},set token(v){v?localStorage.setItem('mpol_token',v):localStorage.removeItem('mpol_token')}};
-const state = {me:null,chats:[],friends:[],requests:[],messages:[],active:null,tab:'chats',ws:null,retry:0,reply:null,register:false,typingTimer:0,
+const state = {me:null,chats:[],friends:[],requests:[],requestsLoaded:false,messages:[],active:null,tab:'chats',ws:null,retry:0,reply:null,register:false,typingTimer:0,
   notif:localStorage.getItem('mpol_notify')==='1',sound:localStorage.getItem('mpol_sound')!=='0',scale:Number(localStorage.getItem('mpol_scale')||'100')};
 function toast(text){const e=document.createElement('div');e.className='toast';e.textContent=text;$('toastZone').append(e);setTimeout(()=>e.remove(),4000)}
 function errorText(err){return String(err?.message||err||'Неизвестная ошибка')}
@@ -22,19 +22,56 @@ function showApp(){ $('authScreen').classList.add('hidden');$('mainScreen').clas
 // No window-level globals exposed: every on-screen action binds a real handler.
 async function serverHealth(){try{const r=await api('/health');$('serverStatus').textContent=r.ok?(r.temporary_storage?'Тестовый онлайн · данные могут исчезнуть':r.durable_database?'Онлайн · сообщения сохраняются':'Сервер доступен'):'Сервер не отвечает';$('serverStatus').previousElementSibling.classList.toggle('good',!!r.ok)}catch{$('serverStatus').textContent='Сервер недоступен';$('serverStatus').previousElementSibling.classList.remove('good')}}
 async function startup(){try{if(storage.token){state.me=await api('/me');showMain();return}}catch{storage.token=''}showLogin()}
-async function showMain(){showApp();$('myProfile').textContent=state.me.nick.slice(0,1).toUpperCase();applyScale();await refreshAll();wsConnect();renderTab('chats')}
-async function refreshAll(){try{const [chats,friends,req]=await Promise.all([api('/chats'),api('/friends'),api('/friends/requests')]);state.chats=chats;state.friends=friends;state.requests=req;$('requestDot').classList.toggle('hidden',!req.length);renderList();if(state.active){const updated=chats.find(c=>c.id===state.active.id);if(updated){state.active=updated;updateHeader()}}}catch(e){toast(errorText(e))}}
+async function showMain(){showApp();state.requests=[];state.requestsLoaded=false;$('myProfile').textContent=state.me.nick.slice(0,1).toUpperCase();$('myAccountId').textContent=state.me.id;applyScale();await refreshAll();wsConnect();renderTab('chats')}
+function setFriendRequests(req){
+ const existing=new Set(state.requests.map(r=>r.request_id));
+ const incoming=state.requestsLoaded?req.filter(r=>!existing.has(r.request_id)):[];
+ state.requests=req;state.requestsLoaded=true;
+ const badge=$('requestDot');badge.textContent=req.length>9?'9+':String(req.length);
+ badge.title=req.length+' заявок в друзья';badge.classList.toggle('hidden',req.length===0);
+ if(incoming.length){
+  const sender=incoming[0].user.nick;
+  toast(incoming.length===1?'Новая заявка в друзья от '+sender:'Новых заявок в друзья: '+incoming.length);
+  if(state.notif&&'Notification'in window&&Notification.permission==='granted'&&document.hidden){
+   try{const n=new Notification('MPOL · заявка в друзья',{body:sender+' хочет добавить вас в друзья',tag:'mpol-friends'});n.onclick=()=>{window.focus();renderTab('notifications');n.close()}}catch{}
+  }
+ }
+}
+let refreshingAll=null;
+async function refreshAll(){
+ if(!state.me)return;
+ if(refreshingAll)return refreshingAll;
+ refreshingAll=(async()=>{try{
+  const [chats,friends,req]=await Promise.all([api('/chats'),api('/friends'),api('/friends/requests')]);
+  if(!state.me)return;
+  state.chats=chats;state.friends=friends;setFriendRequests(req);renderList();
+  if(state.active){const updated=chats.find(c=>c.id===state.active.id);if(updated){state.active=updated;updateHeader()}}
+ }catch(e){if(state.me)toast(errorText(e))}})().finally(()=>{refreshingAll=null});
+ return refreshingAll;
+}
+async function refreshRequests(){
+ if(!state.me)return;
+ try{const requests=await api('/friends/requests');if(!state.me)return;setFriendRequests(requests);if(state.tab==='notifications')renderList()}catch{}
+}
 function renderTab(tab){state.tab=tab;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));
- $('listTitle').textContent=({chats:'Сообщения',friends:'Друзья',groups:'Группы',notifications:'Заявки',settings:'Настройки'})[tab]||'Сообщения';
+ $('listTitle').textContent=({chats:'Сообщения',friends:'Друзья',groups:'Группы',notifications:'Заявки в друзья',settings:'Настройки'})[tab]||'Сообщения';
  $('listSubtitle').textContent=({chats:'На связи с теми, кто важен',friends:'Ваш круг общения',groups:'Командные беседы',notifications:'Новые знакомства',settings:'Персональные параметры'})[tab];
  $('newMessage').textContent=tab==='groups'?'+ Создать группу':tab==='friends'?'+ Добавить друга':tab==='notifications'?'Обновить':'⚙ Настройки';
  if(tab==='chats')$('newMessage').textContent='+ Новый чат';
  $('createGroup').classList.toggle('hidden',tab==='settings'||tab==='notifications');
- if(tab==='settings'){openSettings();renderList();return}renderList();}
+ if(tab==='settings'){openSettings();renderList();return}renderList();if(tab==='notifications')refreshRequests();}
 function renderList(){let filter=$('listSearch').value.trim().toLowerCase();const root=$('chatList');root.replaceChildren();
  if(state.tab==='settings'){root.innerHTML='<div class="list-blank">Нажмите «Настройки», чтобы изменить профиль и уведомления.</div>';return}
- if(state.tab==='notifications'){if(!state.requests.length){root.innerHTML='<div class="list-blank"><strong>Нет новых заявок</strong>Пока никто не отправил запрос.</div>';return}
-  for(const r of state.requests){const el=document.createElement('div');el.className='chat-item';el.innerHTML=avatar(r.user.avatar)+`<div class="chat-item-body"><div class="chat-item-head"><strong>${esc(r.user.nick)}</strong></div><div class="chat-item-preview">${esc(r.user.id)} · заявка в друзья</div></div>`;el.onclick=()=>openRequests();root.append(el)}return}
+ if(state.tab==='notifications'){
+  if(!state.requests.length){root.innerHTML='<div class="list-blank"><strong>Нет новых заявок</strong>Новые заявки появятся здесь автоматически.</div>';return}
+  for(const r of state.requests){
+   const el=document.createElement('div');el.className='request-item';
+   el.innerHTML=avatar(r.user.avatar)+`<div class="request-content"><strong>${esc(r.user.nick)}</strong><span>${esc(r.user.id)}</span><p>Хочет добавить вас в друзья</p><div class="request-buttons"><button type="button" data-accept="1">Принять</button><button type="button" data-accept="0">Отклонить</button></div></div>`;
+   el.querySelector('[data-accept="1"]').onclick=()=>respondFriendRequest(r.request_id,true);
+   el.querySelector('[data-accept="0"]').onclick=()=>respondFriendRequest(r.request_id,false);
+   root.append(el);
+  }return
+ }
  if(state.tab==='friends'){let a=state.friends.filter(f=>f.nick.toLowerCase().includes(filter)||f.id.toLowerCase().includes(filter));if(!a.length)root.innerHTML='<div class="list-blank"><strong>Пока никого нет</strong>Найдите друга по уникальному ID.</div>';
   for(const f of a){const el=document.createElement('button');el.className='chat-item';el.innerHTML=avatar(f.avatar,f.online)+`<div class="chat-item-body"><div class="chat-item-head"><strong>${esc(f.nick)}</strong></div><div class="chat-item-preview">${f.online?'В сети':'Не в сети'} · ${esc(f.id)}</div></div>`;el.onclick=()=>openFriend(f);root.append(el)}return}
  const a=state.chats.filter(c=>(state.tab!=='groups'||c.is_group)&&c.name.toLowerCase().includes(filter));if(!a.length)root.innerHTML='<div class="list-blank"><strong>Диалогов пока нет</strong>Создайте чат или найдите друзей.</div>';
@@ -68,6 +105,7 @@ async function uploadFile(file){if(!file||!state.active)return;if(file.size>12*1
 function wsConnect(){if(!storage.token||!state.me)return;try{const proto=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(proto+'//'+location.host+'/ws');state.ws=ws;
  ws.onopen=()=>{state.retry=0;ws.send(JSON.stringify({type:'auth',token:storage.token}))};
  ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch{return}
+  if(m.type==='authenticated'||m.type==='friend_request'){refreshAll().catch(()=>{});return}
   if(m.type==='message'){if(m.message.user_id!==state.me.id){notifyNewMessage(m.message)}if(state.active?.id===m.message.chat_id){if(!state.messages.some(x=>x.id===m.message.id)){state.messages.push(m.message);renderMessages()}api('/chats/'+state.active.id+'/read',{method:'POST'}).catch(()=>{})}refreshAll().catch(()=>{})}
   if(m.type==='message_updated'){if(state.active?.id===m.message.chat_id){const idx=state.messages.findIndex(x=>x.id===m.message.id);if(idx>=0){state.messages[idx]=m.message;renderMessages()}}refreshAll().catch(()=>{})}
   if(m.type==='chats_changed'||m.type==='friends_changed'||m.type==='presence'||m.type==='profile'||m.type==='read')refreshAll().catch(()=>{});
@@ -88,6 +126,18 @@ function openFriend(f){modal(f.nick,`<p><strong>ID:</strong> ${esc(f.id)}<br><st
 function createGroup(){const options=state.friends.map(f=>`<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-add-member="${esc(f.id)}">${esc(f.nick)}</label>`).join('');
  modal('Создать группу',`<p>Групповой чат для друзей.</p><label>Название группы<input id="groupName" maxlength="80" placeholder="Например, Наша команда"></label><div class="secondary">Добавить участников</div><div class="list-mini">${options||'<p>Сначала добавьте друзей</p>'}</div><button id="makeGroup" class="button">Создать группу</button>`);
  $('makeGroup').onclick=async()=>{const name=$('groupName').value.trim(),members=[...document.querySelectorAll('[data-add-member]:checked')].map(x=>x.dataset.addMember);try{const c=await api('/groups',{method:'POST',body:{name,members}});closeModal();await refreshAll();renderTab('groups');selectChat(c.id)}catch(e){toast(errorText(e))}};}
+async function respondFriendRequest(id,accept){
+ try{await api('/friends/requests/'+encodeURIComponent(id),{method:'POST',body:{accept}});await refreshAll();toast(accept?'Заявка принята — теперь вы друзья':'Заявка отклонена')}
+ catch(e){toast(errorText(e))}
+}
+async function copyAccountId(){
+ const id=state.me?.id;if(!id)return;
+ try{
+  if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(id);
+  else{const el=document.createElement('textarea');el.value=id;el.setAttribute('readonly','');el.style.position='fixed';el.style.left='-9999px';document.body.append(el);el.select();const ok=document.execCommand('copy');el.remove();if(!ok)throw Error('copy denied')}
+  toast('ID скопирован: '+id);
+ }catch{toast('Не удалось скопировать ID. Выделите его вручную в настройках.')}
+}
 function openRequests(){const html=state.requests.map(r=>`<div class="notice-item" data-request="${r.request_id}">${avatar(r.user.avatar)}<div class="name"><strong>${esc(r.user.nick)}</strong><div class="secondary">${esc(r.user.id)}</div></div><button data-answer="1">✓</button><button data-answer="0">✕</button></div>`).join('');modal('Заявки в друзья',html||'<p>Новых заявок пока нет.</p>');document.querySelectorAll('[data-request]').forEach(el=>el.querySelectorAll('[data-answer]').forEach(btn=>btn.onclick=async()=>{try{await api('/friends/requests/'+el.dataset.request,{method:'POST',body:{accept:btn.dataset.answer==='1'}});await refreshAll();openRequests()}catch(e){toast(errorText(e))}}))}
 function chatDetails(){if(!state.active)return;const c=state.active;
  let html=`<p><strong>${esc(c.name)}</strong><br>${c.is_group?'Группа · '+c.members.length+' участников':'Личная переписка'}</p>`;
@@ -100,10 +150,11 @@ function chatDetails(){if(!state.active)return;const c=state.active;
  $('leaveGroup')?.addEventListener('click',async()=>{if(!confirm('Покинуть группу?'))return;try{await api('/groups/'+c.id+'/members/'+state.me.id,{method:'DELETE'});closeModal();state.active=null;$('openedChat').classList.add('hidden');$('emptyChat').classList.remove('hidden');await refreshAll()}catch(e){toast(errorText(e))}})
 }
 function applyScale(){document.documentElement.style.zoom=state.scale+'%'}
-function openSettings(){modal('Настройки MPOL',`<label>Никнейм<input id="profileNick" value="${esc(state.me.nick)}" maxlength="48"></label><label>Описание<input id="profileDescription" value="${esc(state.me.description)}" maxlength="260"></label><label>Аватар (символ)<input id="profileAvatar" value="${esc(state.me.avatar)}" maxlength="8"></label>
+function openSettings(){modal('Настройки MPOL',`<div class="profile-id-card"><div class="profile-id-caption">ВАШ ID · ДЛЯ ПОИСКА В ДРУЗЬЯХ</div><div class="profile-id-row"><code>${esc(state.me.id)}</code><button id="copyProfileId" type="button">Скопировать</button></div></div><label>Никнейм<input id="profileNick" value="${esc(state.me.nick)}" maxlength="48"></label><label>Описание<input id="profileDescription" value="${esc(state.me.description)}" maxlength="260"></label><label>Аватар (символ)<input id="profileAvatar" value="${esc(state.me.avatar)}" maxlength="8"></label>
  <label>Сетевой статус<select id="profileStatus"><option value="online">В сети</option><option value="away">Отошёл</option><option value="dnd">Не беспокоить</option><option value="invisible">Невидимка</option></select></label><button class="button" id="saveProfile">Сохранить профиль</button>
  <div class="setting-row">Уведомления Windows <input type="checkbox" id="notificationsOn" ${state.notif?'checked':''}></div><div class="setting-row">Звук сообщений <input type="checkbox" id="soundsOn" ${state.sound?'checked':''}></div><div class="setting-row">Масштаб интерфейса <select id="scaleSelect"><option value="85">85%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select></div>
- <div class="setting-row">Email: ${esc(state.me.email||'не указан')} ${state.me.email_verified?'✓ подтверждён':'(не подтверждён)'}</div>${state.me.email&&!state.me.email_verified?'<button id="verifyEmail" class="button outlined">Подтвердить email</button>':''}<button id="changePassword" class="button outlined">Изменить пароль</button><button id="serverSettings" class="button outlined">Настройка сервера</button><button id="logOut" class="button outlined">Выйти из аккаунта</button><p class="secondary">Ваш ID: ${esc(state.me.id)}. Никогда не отправляйте другим свой пароль или токен.</p>`);
+ <div class="setting-row">Email: ${esc(state.me.email||'не указан')} ${state.me.email_verified?'✓ подтверждён':'(не подтверждён)'}</div>${state.me.email&&!state.me.email_verified?'<button id="verifyEmail" class="button outlined">Подтвердить email</button>':''}<button id="changePassword" class="button outlined">Изменить пароль</button><button id="serverSettings" class="button outlined">Настройка сервера</button><button id="logOut" class="button outlined">Выйти из аккаунта</button><p class="secondary">ID можно отправить друзьям для поиска. Пароль и токен никому не передавайте.</p>`);
+ $('copyProfileId').onclick=copyAccountId;
  $('profileStatus').value=state.me.status;$('scaleSelect').value=String(state.scale);
  $('saveProfile').onclick=async()=>{try{state.me=await api('/me',{method:'PATCH',body:{nick:$('profileNick').value,description:$('profileDescription').value,avatar:$('profileAvatar').value,status:$('profileStatus').value}});$('myProfile').textContent=state.me.nick.slice(0,1).toUpperCase();toast('Профиль сохранён');closeModal();refreshAll()}catch(e){toast(errorText(e))}};
  $('notificationsOn').onchange=async e=>{if(e.target.checked&&'Notification'in window){const r=await Notification.requestPermission();state.notif=r==='granted';e.target.checked=state.notif}else state.notif=false;localStorage.setItem('mpol_notify',state.notif?'1':'0')};
@@ -124,11 +175,12 @@ function changePassword(){modal('Изменить пароль',`<label>Теку
 async function configServer(){if(location.protocol==='https:' && !['localhost','127.0.0.1'].includes(location.hostname)){modal('Сервер MPOL','<p>Вы подключены к общему тестовому серверу MPOL. Данные могут исчезнуть после перезапуска сервера.</p>');return;}let data={url:''};try{const r=await fetch('/__config');data=await r.json()}catch{};
  modal('Подключение к серверу',`<p>Для общения через интернет обоим пользователям нужен один и тот же доступный сервер MPOL. Для локальной проверки используйте <strong>http://127.0.0.1:8000</strong>.</p><label>Адрес сервера<input id="serverUrl" placeholder="https://chat.example.com" value="${esc(data.url||'')}"></label><button class="button" id="saveServer">Сохранить и переподключиться</button><p class="secondary">В интернете используйте HTTPS с настоящим сертификатом. Указанный сервер может получать ваши сообщения.</p>`);
  $('saveServer').onclick=async()=>{try{const r=await fetch('/__config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('serverUrl').value.trim()})});const x=await r.json();if(!r.ok)throw Error(x.error||'Ошибка адреса');storage.token='';location.reload()}catch(e){toast(errorText(e))}}}
-async function signout(send){if(send)api('/auth/logout',{method:'POST'}).catch(()=>{});storage.token='';state.me=null;state.active=null;state.ws?.close();state.ws=null;closeModal();showLogin()}
+async function signout(send){if(send)api('/auth/logout',{method:'POST'}).catch(()=>{});storage.token='';state.me=null;state.active=null;state.requests=[];state.requestsLoaded=false;state.ws?.close();state.ws=null;closeModal();showLogin()}
 function openSearch(){findFriends()}
 $('toggleAuth').onclick=()=>{state.register=!state.register;$('registerFields').classList.toggle('hidden',!state.register);$('confirmFields').classList.toggle('hidden',!state.register);$('authSubtitle').textContent=state.register?'Создайте аккаунт и найдите друзей.':'Добро пожаловать. Войдите в свой аккаунт.';$('authSubmit').firstChild.textContent=state.register?'Зарегистрироваться ':'Войти ';$('toggleAuth').innerHTML=state.register?'Уже есть аккаунт? <b>Войти</b>':'Нет аккаунта? <b>Создать аккаунт</b>';$('password').setAttribute('autocomplete',state.register?'new-password':'current-password')};
 $('authForm').onsubmit=async e=>{e.preventDefault();$('authError').textContent='';$('authSubmit').disabled=true;try{const login=$('login').value.trim(),password=$('password').value;if(state.register&&password!==$('password2').value)throw Error('Пароли не совпадают');const body=state.register?{nick:$('nick').value,login,password,email:$('email').value||null}:{login,password};const data=await api(state.register?'/auth/register':'/auth/login',{method:'POST',body});storage.token=data.token;state.me=data.user;await showMain()}catch(e){$('authError').textContent=errorText(e)}finally{$('authSubmit').disabled=false}};
 $('configureServer').onclick=configServer;$('forgotPassword').onclick=forgotPassword;$('newMessage').onclick=()=>{if(state.tab==='notifications')refreshAll();else if(state.tab==='settings')openSettings();else if(state.tab==='groups')createGroup();else findFriends()};$('createGroup').onclick=createGroup;
+$('copyMyId').onclick=copyAccountId;
 $('emptyFind').onclick=findFriends;document.querySelectorAll('.rail-btn[data-tab]').forEach(b=>b.onclick=()=>renderTab(b.dataset.tab));$('myProfile').onclick=openSettings;
 $('listSearch').oninput=renderList;$('composer').onsubmit=e=>{e.preventDefault();send()};$('attachBtn').onclick=attach;$('fileInput').onchange=e=>uploadFile(e.target.files[0]);
 $('emojiBtn').onclick=()=>{const input=$('messageInput');input.value+=' 🙂';input.focus()};$('messageInput').oninput=()=>{if(state.ws?.readyState===WebSocket.OPEN&&state.active){state.ws.send(JSON.stringify({type:'typing',chat_id:state.active.id}))}};
@@ -138,4 +190,7 @@ $('messageSearchClear').onclick=()=>{$('messageSearchInput').value='';$('message
 $('closeModal').onclick=closeModal;$('modalBackdrop').onclick=closeModal;document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
 setInterval(()=>{if(state.ws?.readyState===WebSocket.OPEN)state.ws.send(JSON.stringify({type:'ping'}));if(location.hostname==='127.0.0.1'||location.hostname==='localhost')fetch('/__ping').catch(()=>{})},15000);
 setInterval(()=>{if(!state.me)serverHealth()},10000);
+setInterval(()=>{if(state.me)refreshRequests()},12000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.me)refreshAll()});
+window.addEventListener('focus',()=>{if(state.me)refreshRequests()});
 startup();

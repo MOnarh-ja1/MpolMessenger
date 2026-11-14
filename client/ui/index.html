@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; object-src 'none'; base-uri 'none'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' wss: ws://127.0.0.1:* ws://localhost:*; object-src 'none'; base-uri 'none'; form-action 'self'"/>
 <title>MPOL Messenger</title><link rel="icon" href="/icon.png"><link rel="stylesheet" href="/style.css"></head>
 <body>
 <div class="ambient"></div>
@@ -22,13 +22,17 @@
     <button class="rail-btn active" data-tab="chats" title="Сообщения"><span>▤</span></button>
     <button class="rail-btn" data-tab="friends" title="Друзья"><span>♧</span></button>
     <button class="rail-btn" data-tab="groups" title="Группы"><span>▦</span></button>
-    <button class="rail-btn" data-tab="notifications" title="Заявки"><span>♢</span><i id="requestDot" class="tiny-dot hidden"></i></button>
+    <button class="rail-btn" data-tab="notifications" title="Заявки"><span>♢</span><span id="requestDot" class="request-badge hidden" aria-live="polite" aria-label="Заявки в друзья"></span></button>
   </div><div class="rail-bottom"><button class="rail-btn" data-tab="settings" title="Настройки"><span>⚙</span></button><button id="myProfile" title="Мой профиль" class="self-avatar">M</button></div></aside>
   <aside class="chat-list-panel">
     <div class="list-header"><div class="overline">MPOL / MESSENGER</div><h2 id="listTitle">Сообщения</h2><p id="listSubtitle">На связи с теми, кто важен</p></div>
     <div class="list-search"><span>⌕</span><input id="listSearch" placeholder="Поиск…" autocomplete="off"></div>
     <div class="action-row"><button id="newMessage" class="soft-action">+ Новый чат</button><button id="createGroup" class="round-action" title="Создать группу">▦</button></div>
     <div id="chatList" class="chat-list"></div>
+    <div id="myIdCard" class="account-id-card">
+      <div class="account-id-meta"><span>ВАШ ID ДЛЯ ДРУЗЕЙ</span><strong id="myAccountId">—</strong></div>
+      <button id="copyMyId" type="button" title="Скопировать ID аккаунта">Скопировать</button>
+    </div>
     <div class="left-foot"><span class="status-pip"></span><span>Защищённое соединение при HTTPS</span></div>
   </aside>
   <main class="conversation">
