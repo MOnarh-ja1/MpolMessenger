@@ -96,6 +96,36 @@ async function main(){
    assert.ok(m.inputFont>=16,'iPhone should not zoom the composer when focused');
    assert.ok(m.scrollWidth<=width+2,'No horizontal overflow '+width);
    console.log('PASS iPhone layout '+width+'x'+height);
+   // Emoji picker must be entirely visible and must not open the keyboard on tap.
+   await page.evaluate(()=>{
+     const input=document.getElementById('messageInput');
+     input.value='Привет ';
+     document.getElementById('emojiBtn').click();
+   });
+   const picker=await page.evaluate(()=>{
+     const p=document.getElementById('emojiPalette');
+     const rect=p.getBoundingClientRect();
+     return {top:rect.top,bottom:rect.bottom,left:rect.left,right:rect.right,
+       open:!p.classList.contains('hidden'),
+       inputFocused:document.activeElement?.id==='emojiSearch',
+       buttons:p.querySelectorAll('.emoji-grid button').length,
+       userSelect:getComputedStyle(document.querySelector('.chat-list-panel')).userSelect,
+       scale:document.querySelector('meta[name="viewport"]')?.content||''};
+   });
+   assert.ok(picker.open&&picker.buttons>20,'Emoji grid failed: '+JSON.stringify(picker));
+   assert.ok(picker.top>=0&&picker.bottom<=height+2&&picker.left>=0&&picker.right<=width+2,
+    'Emoji grid outside iPhone screen: '+JSON.stringify(picker));
+   assert.equal(picker.inputFocused,false,'Opening emojis must not open the iPhone keyboard');
+   assert.equal(picker.userSelect,'none','Application chrome must not be text-selectable');
+   assert.ok(picker.scale.includes('user-scalable=no'),'Scale lock viewport missing');
+   await page.locator('#emojiResults button').first().click();
+   const selected=await page.evaluate(()=>({
+     content:document.getElementById('messageInput').value,
+     hidden:document.getElementById('emojiPalette').classList.contains('hidden')
+   }));
+   assert.ok(selected.content.includes('😀')&&selected.hidden,JSON.stringify(selected));
+   console.log('PASS iPhone emoji '+width+'x'+height);
+
   }
  }finally{await browser?.close();await new Promise(r=>server.close(r))}
 }

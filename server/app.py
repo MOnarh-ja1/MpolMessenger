@@ -795,6 +795,13 @@ async def websocket(ws:WebSocket):
                 with SessionLocal() as d:
                     if to==uid or not is_friend(d,uid,to) or blocked(d,uid,to):continue
                     sender=d.get(User,uid)
+                    # The destination can be on another ISP/mobile network; all signaling
+                    # uses the public HTTPS/WSS server, never local LAN addresses.
+                    # If the other app is closed, stop a call from ringing indefinitely.
+                    if kind=='invite' and not sockets.get(to):
+                        await emit([uid],{'type':'call_signal','from_id':to,
+                            'nick':'Собеседник','kind':'unavailable','call_id':cid,'payload':{}})
+                        continue
                     await emit([to],{'type':'call_signal','from_id':uid,'nick':sender.nick,
                          'kind':kind,'call_id':cid,'payload':payload})
     except (WebSocketDisconnect, asyncio.TimeoutError,ValueError,RuntimeError):pass

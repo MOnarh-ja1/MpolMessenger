@@ -10,6 +10,10 @@ const EMOJI_LIST=[
  '💛','💚','💙','💜','🤍','🔥','⭐','✨','🎉','🎁','🎮','🎧','🎤',
  '📸','🍕','☕','🐱','🐶','🌙','🌍','🚀','💬','✅','❌'
 ];
+function closeEmojiPalette(){
+ const palette=document.getElementById('emojiPalette');
+ if(palette)palette.classList.add('hidden');
+}
 function renderEmojiOptions(query=''){
  const grid=document.getElementById('emojiResults');
  if(!grid)return;
@@ -18,20 +22,46 @@ function renderEmojiOptions(query=''){
  const terms={love:['❤️','😍','🥰','😘','🤍'],heart:['❤️','🧡','💛','💚','💙','💜'],smile:['😀','😊','🙂','😂'],
   огонь:['🔥'],сердце:['❤️','🥰','😍'],смех:['😂','🤣'],грусть:['😢','😭','🥺'],лайк:['👍','👌'],игра:['🎮'],музыка:['🎧','🎤']};
  if(q)items=terms[q]||EMOJI_LIST.filter(e=>e.includes(q));
- grid.innerHTML=items.map(e=>'<button type="button" data-emoji="'+e+'" title="'+e+'">'+e+'</button>').join('');
- grid.querySelectorAll('button').forEach(b=>b.onclick=()=>{
-  const inp=$('messageInput');const start=inp.selectionStart,end=inp.selectionEnd;
-  inp.setRangeText(b.dataset.emoji,start,end,'end');inp.focus();
-  $('emojiPalette').classList.add('hidden')
- });
+ grid.replaceChildren();
+ if(!items.length){
+  const none=document.createElement('p');
+  none.className='emoji-empty';none.textContent='Эмодзи не найдены';grid.append(none);return;
+ }
+ for(const emoji of items){
+  const button=document.createElement('button');
+  button.type='button';button.textContent=emoji;button.title=emoji;
+  button.setAttribute('aria-label','Вставить '+emoji);
+  button.addEventListener('click',()=>{
+   const inp=document.getElementById('messageInput');
+   if(!inp)return;
+   const start=Number.isInteger(inp.selectionStart)?inp.selectionStart:inp.value.length;
+   const end=Number.isInteger(inp.selectionEnd)?inp.selectionEnd:start;
+   inp.setRangeText(emoji,start,end,'end');
+   inp.dispatchEvent(new Event('input',{bubbles:true}));
+   closeEmojiPalette();
+   // Focusing the composer on iPhone opens the keyboard and shrinks the chat.
+   if(window.matchMedia('(min-width:601px)').matches)inp.focus();
+  });
+  grid.append(button);
+ }
 }
 function toggleEmojiPalette(){
- const p=$('emojiPalette');
- if(!p.classList.contains('hidden')){p.classList.add('hidden');return}
- p.innerHTML='<label>Эмодзи<input id="emojiSearch" placeholder="Поиск (сердце, огонь, смех)" aria-label="Поиск эмодзи"></label><div id="emojiResults" class="emoji-grid"></div>';
- p.classList.remove('hidden');$('emojiSearch').oninput=e=>renderEmojiOptions(e.target.value);
- renderEmojiOptions();$('emojiSearch').focus();
+ const p=document.getElementById('emojiPalette');
+ if(!p.classList.contains('hidden')){closeEmojiPalette();return}
+ p.innerHTML='<div class="emoji-header"><strong>Эмодзи</strong><button type="button" id="closeEmoji" aria-label="Закрыть эмодзи">✕</button></div>'+
+ '<label><span class="emoji-search-label">Поиск смайликов</span><input id="emojiSearch" type="search" placeholder="Сердце, смех, огонь…" aria-label="Поиск эмодзи" autocomplete="off"></label>'+
+ '<div id="emojiResults" class="emoji-grid"></div>';
+ p.classList.remove('hidden');
+ document.getElementById('closeEmoji').onclick=closeEmojiPalette;
+ document.getElementById('emojiSearch').oninput=e=>renderEmojiOptions(e.target.value);
+ renderEmojiOptions();
+ if(window.matchMedia('(min-width:601px)').matches)document.getElementById('emojiSearch').focus();
 }
+document.addEventListener('pointerdown',ev=>{
+ const palette=document.getElementById('emojiPalette');
+ if(!palette||palette.classList.contains('hidden'))return;
+ if(!palette.contains(ev.target)&&!document.getElementById('emojiBtn')?.contains(ev.target))closeEmojiPalette();
+});
 function recordButton(active,sec=0){
  const b=$('voiceBtn');b.classList.toggle('recording',active);
  b.textContent=active?'● '+Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0'):'🎙';

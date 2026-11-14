@@ -1,0 +1,12 @@
+# TURN runs separately from Render's HTTP service.
+# Linux VPS with a public IP and Docker Compose is required.
+services:
+  turn:
+    image: coturn/coturn:latest
+    container_name: mpol-turn
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    command: ["-c", "/etc/coturn/turnserver.conf", "--log-file=stdout"]

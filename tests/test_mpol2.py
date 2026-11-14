@@ -157,6 +157,16 @@ def run():
                     recipient.send_json({'type':'call_signal','to':a,'kind':'restart','call_id':callid})
                     restart_event=origin.receive_json()
                     assert restart_event['type']=='call_signal' and restart_event['kind']=='restart'
+            # Different networks use public WSS; if the receiver is not
+            # connected, signaling must not leave a caller ringing indefinitely.
+            with client.websocket_connect('/ws') as origin:
+                origin.send_json({'type':'auth','token':at})
+                assert origin.receive_json()['type']=='authenticated'
+                origin.send_json({'type':'call_signal','to':b,'kind':'invite',
+                    'call_id':'mpol-test-offline','payload':{'mode':'audio'}})
+                offline=origin.receive_json()
+                assert offline['type']=='call_signal' and offline['kind']=='unavailable',offline
+                assert offline['call_id']=='mpol-test-offline' and offline['from_id']==b
             print('PASS: developer RBAC, physical deletion, saved, archive, reactions, avatars, audio, two-user WebRTC signaling')
         engine.dispose()
 

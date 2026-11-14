@@ -175,6 +175,12 @@ function createPeer(){
   }
  }
  pc.onicecandidate=e=>{if(e.candidate&&currentCall===c)signalCall('ice',{candidate:e.candidate.toJSON()})};
+ pc.onicecandidateerror=e=>{
+  if(currentCall!==c||!c.relayConfigured)return;
+  const status=$call('callQuality');
+  status.textContent='Ошибка TURN/STUN ('+String(e.errorCode||'сеть')+'). Проверьте релей и интернет.';
+  status.classList.add('warning');
+ };
  pc.ontrack=e=>{
   if(currentCall!==c)return;
   // Both remote tracks belong to one persistent MediaStream; changing srcObject
@@ -240,7 +246,7 @@ async function onCallSignal(m){
  }
  const c=currentCall;if(!c||c.id!==id||c.peer!==from)return;
  try{
-  if(['decline','busy','hangup'].includes(kind)){toast(kind==='busy'?'Собеседник занят':kind==='decline'?'Вызов отклонён':'Звонок завершён');endCall(false);return}
+  if(['decline','busy','hangup','unavailable'].includes(kind)){toast(kind==='unavailable'?'Собеседник сейчас не в сети. Для звонка ему нужно открыть MPOL.':kind==='busy'?'Собеседник занят':kind==='decline'?'Вызов отклонён':'Звонок завершён');endCall(false);return}
   if(kind==='restart'){if(c.isCaller)await restartCallIce(c);return}
   if(kind==='accept'&&!c.incoming){
    const pc=createPeer();const offer=await pc.createOffer();await pc.setLocalDescription(offer);
