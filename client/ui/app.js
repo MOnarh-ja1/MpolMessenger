@@ -294,6 +294,7 @@ $('configureServer').onclick=configServer;$('forgotPassword').onclick=forgotPass
 $('copyMyId').onclick=copyAccountId;
 document.querySelectorAll('[data-filter]').forEach(el=>el.onclick=()=>{state.chatFilter=el.dataset.filter;updateFilters();renderList()});
 updateFilters();
+$('railSearch').onclick=()=>{findFriends()};
 $('emptyFind').onclick=findFriends;document.querySelectorAll('.rail-btn[data-tab]').forEach(b=>b.onclick=()=>renderTab(b.dataset.tab));$('myProfile').onclick=openSettings;
 $('listSearch').oninput=renderList;$('composer').onsubmit=e=>{e.preventDefault();send()};$('voiceBtn').onclick=toggleVoiceRecording;$('archiveChat').onclick=toggleChatArchive;$('attachBtn').onclick=attach;$('fileInput').onchange=e=>uploadFile(e.target.files[0]);
 $('emojiBtn').onclick=toggleEmojiPalette;$('messageInput').oninput=()=>{if(state.ws?.readyState===WebSocket.OPEN&&state.active){state.ws.send(JSON.stringify({type:'typing',chat_id:state.active.id}))}};

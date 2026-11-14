@@ -35,7 +35,13 @@ def run():
             os.environ.pop('MPOL_DEVELOPER_IDS',None)
             manifest=client.get('/api/windows-update')
             assert manifest.status_code==200
-            assert manifest.json()['version']=='2.1.0'
+            assert manifest.json()['version']=='2.2.0'
+            assert manifest.json()['download_url'].endswith('/v2.2.0/MpolMessenger.exe')
+            os.environ['MPOL_WINDOWS_RELEASE_TAG']='v2.2.1'
+            updated_manifest=client.get('/api/windows-update').json()
+            assert updated_manifest['version']=='2.2.1'
+            assert updated_manifest['download_url'].endswith('/v2.2.1/MpolMessenger.exe')
+            os.environ.pop('MPOL_WINDOWS_RELEASE_TAG',None)
             saved=client.post('/api/me/saved',headers=ah)
             assert saved.status_code==200,saved.text
             saved_id=saved.json()['id']

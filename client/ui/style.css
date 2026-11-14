@@ -164,3 +164,49 @@ body{min-width:0!important;width:100%;height:100dvh;height:100vh;overflow:hidden
  .conv-header{height:51px}
  .composer-foot{display:none}
 }
+
+
+/* MPOL Black navigation: original user-provided glossy artwork, optimised 72px WebP. */
+.rail-stack{gap:8px;margin-top:32px;align-items:center}
+.rail-stack .rail-btn{
+ display:grid;place-items:center;position:relative;width:56px;height:56px;padding:2px;
+ background:transparent;border:1px solid transparent;border-radius:15px;
+ transition:background .17s ease,border-color .17s ease;
+}
+.mpol-nav-icon{
+ width:100%;height:100%;max-width:52px;max-height:52px;display:block;object-fit:contain;
+ user-select:none;pointer-events:none;filter:brightness(.90);
+ transition:transform .17s ease,filter .17s ease;
+}
+.rail-stack .rail-btn:hover{background:#1b1b1f;border-color:#2e2e35}
+.rail-stack .rail-btn:hover .mpol-nav-icon{filter:brightness(1.16);transform:translateY(-1px)}
+.rail-stack .rail-btn.active{background:#222226;border-color:#3a3a40}
+.rail-stack .rail-btn.active .mpol-nav-icon{filter:brightness(1.12)}
+.rail-stack .rail-btn.active:before{left:-9px;top:16px;height:22px;width:3px}
+.rail-stack .rail-btn:focus-visible{outline:2px solid #eee;outline-offset:2px}
+.rail-stack .request-badge{
+ right:-5px;top:-5px;z-index:2;border:2px solid #101012;
+ box-shadow:0 3px 9px #000b;pointer-events:none;
+}
+.rail-bottom{gap:8px}
+.rail-bottom .rail-secondary{width:40px;height:40px;padding:0;font-size:22px}
+.rail-bottom .rail-secondary span{display:block;line-height:40px}
+.mpol-search-icon{display:block;width:26px;height:26px;object-fit:contain;opacity:.86;flex-shrink:0;margin-right:5px}
+.mpol-header-search-icon{display:block;width:30px;height:30px;object-fit:contain;margin:auto}
+.conv-top-actions #searchMessages{padding:1px;display:grid;place-items:center}
+.list-search:focus-within .mpol-search-icon{opacity:1}
+@media(max-height:600px){
+ .rail-stack{margin-top:13px;gap:5px}
+ .rail-stack .rail-btn{width:45px;height:45px;padding:2px}
+ .rail-stack .rail-btn.active:before{top:12px}
+ .rail-bottom{gap:3px}
+ .rail-bottom .rail-secondary{width:36px;height:36px}
+ .rail-bottom .rail-secondary span{line-height:36px}
+}
+@media(max-height:440px){
+ .rail-stack{margin-top:6px;gap:2px}
+ .rail-stack .rail-btn{width:39px;height:39px}
+}
+@media(prefers-reduced-motion:reduce){
+ .mpol-nav-icon,.rail-stack .rail-btn{transition:none}
+}

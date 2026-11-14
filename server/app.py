@@ -307,8 +307,11 @@ def windows_update():
     # A checksum is mandatory for EXE auto-update, populated after release.
     digest=os.getenv('MPOL_WINDOWS_EXE_SHA256','').strip().lower()
     if digest and not re.fullmatch(r'[0-9a-f]{64}',digest):digest=''
-    # Do not advertise an unreleased EXE with the previous build's checksum.
-    release='v2.2.0' if os.getenv('MPOL_WINDOWS_RELEASE_TAG')=='v2.2.0' else 'v2.1.0'
+    # The release tag and matching SHA-256 are set together ONLY after GitHub
+    # confirms that the corresponding Windows EXE exists.
+    release=os.getenv('MPOL_WINDOWS_RELEASE_TAG','v2.2.0').strip()
+    if not re.fullmatch(r'v\d+\.\d+\.\d+',release):
+        release='v2.2.0'
     version=release[1:]
     return {'version':version,'required':True,
       'download_url':'https://github.com/MOnarh-ja1/MpolMessenger/releases/download/'+release+'/MpolMessenger.exe',
