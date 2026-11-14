@@ -479,12 +479,11 @@ async def moderation_delete_account(user_id:str,body:ModerationDeletion,
     all_attachments=list(d.scalars(select(Attachment).where(Attachment.owner_id==target.id)).all())
     for attachment in all_attachments:
         d.execute(update(Message).where(Message.attachment_id==attachment.id).values(attachment_id=None))
-        blob=d.get(AttachmentBlob,attachment.id)
-        if blob:d.delete(blob)
+        d.execute(delete(AttachmentBlob).where(AttachmentBlob.attachment_id==attachment.id))
         if SQLITE and attachment.file_path:
             try:Path(attachment.file_path).unlink(missing_ok=True)
             except OSError:pass
-        d.delete(attachment)
+        d.execute(delete(Attachment).where(Attachment.id==attachment.id))
     # Reassign groups owned by the erased user; preserve other members' conversations.
     for c in d.scalars(select(Chat).where(Chat.owner_id==target.id,Chat.is_group==True)).all():
         remaining=d.scalar(select(Member).where(Member.chat_id==c.id,Member.user_id!=target.id))
