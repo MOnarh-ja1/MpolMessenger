@@ -20,6 +20,7 @@ function createWindow(){
     addEventListener(){}})
  };
  const ctx=vm.createContext({localStorage:sharedLocal,sessionStorage:memory(),document,
+  location:{search:'?mpol_client=2.8.0'},URLSearchParams,
   timestr:()=> '12:00',Date,console,
   messageAction(){},setReaction(){},playVoiceAttachment(){},previewOrDownload(){},
   downloadFile(){}});

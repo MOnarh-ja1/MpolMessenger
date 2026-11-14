@@ -367,3 +367,11 @@ img{-webkit-user-drag:none;user-drag:none}
 @media (max-width:350px){
  .emoji-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
 }
+
+/* MPOL 2.8 — persistent browser/PWA login controls. */
+.auth-card .remember-login-row{display:flex;align-items:center;gap:11px;min-height:38px;margin:7px 0 3px;color:#bebec2;font-size:12px;cursor:pointer}
+.auth-card .remember-login-row input{width:18px;height:18px;accent-color:#d3d3d6;margin:0;flex-shrink:0}
+.session-restore{margin:18px 0 5px}
+.session-restore p{color:#b8b8bc;font-size:13px;line-height:1.6;margin:0 0 17px}
+.session-restore .button{width:100%;display:flex;align-items:center;justify-content:space-between}
+.session-restore .text-button{margin-top:17px}
