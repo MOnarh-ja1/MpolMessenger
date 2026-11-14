@@ -59,3 +59,32 @@
 .call-volume-label input{width:120px;accent-color:#e5e5e8}
 .conv-top-actions{gap:5px}.conv-top-actions button{min-width:34px}
 @media(max-width:870px){.chat-filters{gap:3px;margin-inline:7px}.chat-filters button{font-size:9px;padding:7px 7px}.call-card{padding:15px}}
+
+
+/* MPOL 2.1 profile settings and call controls */
+.modal{width:min(560px,100%)}.modal-body{padding:21px 24px 24px}
+.profile-hero{display:flex;align-items:center;gap:18px;padding:15px 9px 23px;border-bottom:1px solid #303034;margin-bottom:18px}
+.profile-hero-avatar{height:82px;width:82px;flex-shrink:0;border-radius:50%;border:2px solid #4c4c53;background:#303035;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:38px}
+.profile-hero-avatar img{width:100%;height:100%;object-fit:cover}
+.profile-hero-name h3{font-size:23px;margin:0 0 6px;color:#f6f6f7;word-break:break-word}
+.profile-hero-name p{color:#92929c;font-size:12px;margin:0}
+.developer-tag{display:inline-flex;border:1px solid #b0a98a;background:#36342c;color:#e5dcac;padding:4px 9px;border-radius:20px;font-size:10px;margin-top:10px}
+.settings-panel{padding:18px 19px 12px;border:1px solid #333338;background:#1d1d20;border-radius:14px;margin:0 0 13px}
+.settings-panel h3{font-size:13px;font-weight:750;color:#f2f2f4;margin:1px 0 15px}
+.settings-panel label{display:block;color:#b3b3bb;font-size:12px;margin:10px 0}
+.settings-panel input,.settings-panel textarea,.settings-panel select{display:block;width:100%;background:#111114;border:1px solid #39393d;border-radius:9px;padding:10px;margin-top:6px;color:#ececf0;font:inherit}
+.settings-panel textarea{resize:vertical;min-height:58px}
+.settings-panel input:focus,.settings-panel textarea:focus{border-color:#828288}
+.settings-panel .profile-id-card{margin:0 0 10px;padding:10px;border-radius:8px}
+.settings-panel .setting-row input[type=checkbox]{width:16px;height:16px;flex-shrink:0}
+.settings-panel .setting-row select{max-width:140px;width:auto;margin:0}
+.settings-panel .button{margin:8px 0}
+.settings-panel .developer-only{margin:10px 0}
+.settings-panel .profile-id-row{gap:10px}
+.developer-only{border:1px solid #6b654b}
+.call-audio-settings{display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;margin:12px 0}
+.call-audio-settings label{font-size:11px;color:#b5b5bc;display:flex;align-items:center;gap:7px}
+.call-audio-settings input{accent-color:#f1f1f1}
+.call-audio-settings button{font-size:11px;padding:9px}
+.mini-avatar .avatar-photo{width:100%;height:100%;object-fit:cover;border-radius:50%}
+@media(max-width:620px){.profile-hero{gap:12px}.profile-hero-avatar{height:66px;width:66px}.profile-hero-name h3{font-size:19px}.settings-panel{padding:12px}}
