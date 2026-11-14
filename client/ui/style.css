@@ -375,3 +375,23 @@ img{-webkit-user-drag:none;user-drag:none}
 .session-restore p{color:#b8b8bc;font-size:13px;line-height:1.6;margin:0 0 17px}
 .session-restore .button{width:100%;display:flex;align-items:center;justify-content:space-between}
 .session-restore .text-button{margin-top:17px}
+
+/* MPOL 2.9 — peer profile, own chat removal and server-backed moderation */
+.button.danger{background:#4b2327;color:#ffdee0;border:1px solid #843b43}
+.button.danger:hover{background:#693139}
+.moderation-panel{margin-top:16px;border-top:1px solid #36363a;padding-top:15px}
+.moderation-danger{background:#25191c;border:1px solid #5a3038;padding:15px;border-radius:12px;margin-top:14px}
+.moderation-danger p{color:#e8bdc2;font-size:12px;line-height:1.55}
+.moderation-danger label{display:block;color:#e6ced0;margin:12px 0 10px}
+.moderation-danger input{margin-top:6px}
+.moderation-danger .button{width:100%}
+#deleteChat{font-size:17px}
+#openChatProfile{font-size:18px}
+@media(max-width:600px){
+  /* The chat-details sheet includes the peer profile entry as well. */
+  #openChatProfile{display:none!important}
+  #deleteChat{width:39px;min-width:39px;height:42px}
+  .conv-top-actions{gap:2px}
+  .moderation-danger{padding:11px}
+  .modal-body .moderation-danger input{font-size:16px}
+}

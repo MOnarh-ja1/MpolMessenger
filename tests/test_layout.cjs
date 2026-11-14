@@ -93,6 +93,27 @@ async function main(){
   await page.evaluate(()=>closeModal());
   console.log('PASS: unique account ID appears only inside My Account settings');
 
+  const moderationUi=await page.evaluate(()=>{
+    const u={id:'MPPEER123',nick:'Собеседник',avatar:'◉',online:true,description:'Мой профиль'};
+    state.me.is_developer=false;showUserProfile(u);
+    const regular={profile:document.getElementById('modalTitle').textContent,
+      adminVisible:!!document.getElementById('openModeration')};
+    closeModal();
+    state.me.is_developer=true;showUserProfile(u);
+    const developer={adminVisible:!!document.getElementById('openModeration')};
+    closeModal();
+    state.me.is_developer=false;
+    state.active={id:'DM_TEST',name:'Собеседник',is_group:false,is_saved:false,
+      peer_id:u.id,avatar:'◉',online:true,members:[state.me.id,u.id]};
+    updateHeader();
+    return {regular,developer,deleteChat:!!document.getElementById('deleteChat'),
+      profileButton:!document.getElementById('openChatProfile').classList.contains('hidden')};
+  });
+  assert.equal(moderationUi.regular.profile,'Профиль пользователя');
+  assert.equal(moderationUi.regular.adminVisible,false,'Regular users must not see admin UI');
+  assert.equal(moderationUi.developer.adminVisible,true,'Developer sees moderation UI');
+  assert.ok(moderationUi.deleteChat&&moderationUi.profileButton,'Chat toolbar controls missing');
+  console.log('PASS peer profile, developer-only moderation UI and chat deletion controls');
   // iPhone-sized viewport: only one pane should be visible, input never clipped.
   for(const [width,height] of [[390,844],[375,667],[320,568]]){
    await page.setViewportSize({width,height});

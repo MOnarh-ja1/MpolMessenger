@@ -178,6 +178,81 @@ def run():
                 offline=origin.receive_json()
                 assert offline['type']=='call_signal' and offline['kind']=='unavailable',offline
                 assert offline['call_id']=='mpol-test-offline' and offline['from_id']==b
+            # Every user can delete only their own chat history. The peer sees it unchanged.
+            old_bob=client.get('/api/chats/'+chat_id+'/messages',headers=bh).json()
+            assert old_bob
+            removed=client.delete('/api/chats/'+chat_id,headers=ah)
+            assert removed.status_code==200,removed.text
+            assert removed.json()['deleted_for_me'] is True
+            assert not any(c['id']==chat_id for c in client.get('/api/chats',headers=ah).json())
+            assert any(c['id']==chat_id for c in client.get('/api/chats',headers=bh).json())
+            assert client.get('/api/chats/'+chat_id+'/messages',headers=ah).json()==[]
+            assert client.get('/api/chats/'+chat_id+'/messages',headers=bh).json()==old_bob
+            assert client.delete('/api/chats/'+saved_id,headers=bh).status_code==403
+            assert client.delete('/api/chats/'+saved_id,headers=ah).status_code==400
+            new_from_bob=client.post('/api/chats/'+chat_id+'/messages',headers=bh,
+                json={'body':'Новый диалог после удаления'})
+            assert new_from_bob.status_code==200,new_from_bob.text
+            assert any(c['id']==chat_id for c in client.get('/api/chats',headers=ah).json())
+            view=client.get('/api/chats/'+chat_id+'/messages',headers=ah).json()
+            assert len(view)==1 and view[0]['id']==new_from_bob.json()['id'],view
+
+            # Server privileges, not client roles or guessed IDs, control moderation.
+            c,ct,ch=register('mpol_mod_target')
+            os.environ['MPOL_DEVELOPER_IDS']=a
+            assert client.get('/api/developer/users/'+c+'/status',headers=bh).status_code==403
+            assert client.post('/api/developer/users/'+c+'/ban',headers=bh,
+                json={'reason':'test account'}).status_code==403
+            assert client.get('/api/developer/users/'+c+'/status',headers=ah).json()['state']=='active'
+            assert client.post('/api/developer/users/'+a+'/ban',headers=ah,
+                json={'reason':'self ban'}).status_code==403
+            os.environ['MPOL_DEVELOPER_IDS']=a+','+c
+            assert client.post('/api/developer/users/'+c+'/ban',headers=ah,
+                json={'reason':'test account'}).status_code==403
+            os.environ['MPOL_DEVELOPER_IDS']=a
+            c_request=client.post('/api/friends/request',headers=ch,json={'target_id':a})
+            assert c_request.status_code==200,c_request.text
+            pending=client.get('/api/friends/requests',headers=ah).json()
+            req_id=next(v['request_id'] for v in pending if v['user']['id']==c)
+            assert client.post('/api/friends/requests/'+str(req_id),headers=ah,json={'accept':True}).status_code==200
+            c_dm=client.post('/api/dm/'+a,headers=ch)
+            assert c_dm.status_code==200,c_dm.text
+            c_chat=c_dm.json()['id']
+            c_msg=client.post('/api/chats/'+c_chat+'/messages',headers=ch,
+                json={'body':'Content to erase on account deletion'})
+            assert c_msg.status_code==200,c_msg.text
+            banned=client.post('/api/developer/users/'+c+'/ban',headers=ah,
+                json={'reason':'local test violation'})
+            assert banned.status_code==200,banned.text
+            assert banned.json()['state']=='banned'
+            assert client.get('/api/me',headers=ch).status_code==401
+            assert client.post('/api/auth/login',json={'login':'mpol_mod_target',
+                'password':'local-test-password-123'}).status_code==403
+            unbanned=client.delete('/api/developer/users/'+c+'/ban',headers=ah)
+            assert unbanned.status_code==200,unbanned.text
+            restored=client.post('/api/auth/login',json={'login':'mpol_mod_target',
+                'password':'local-test-password-123'})
+            assert restored.status_code==200,restored.text
+            current_ch={'Authorization':'Bearer '+restored.json()['token']}
+            assert client.request('DELETE','/api/developer/users/'+c,headers=ah,
+                json={'confirm_id':'WRONG-ID'}).status_code==400
+            assert client.request('DELETE','/api/developer/users/'+c,headers=bh,
+                json={'confirm_id':c}).status_code==403
+            erased=client.request('DELETE','/api/developer/users/'+c,headers=ah,
+                json={'confirm_id':c})
+            assert erased.status_code==200,erased.text
+            assert erased.json()['state']=='deleted'
+            assert client.get('/api/me',headers=current_ch).status_code==401
+            assert client.post('/api/auth/login',json={'login':'mpol_mod_target',
+                'password':'local-test-password-123'}).status_code==401
+            assert client.get('/api/users/'+c,headers=ah).status_code==404
+            assert client.get('/api/developer/users/'+c+'/status',headers=ah).json()['state']=='deleted'
+            assert client.request('DELETE','/api/developer/users/'+c,headers=ah,
+                json={'confirm_id':c}).status_code==409
+            assert client.get('/api/chats/'+c_chat+'/messages',headers=ah).json()==[]
+            assert client.get('/api/me',headers=ah).status_code==200
+            os.environ.pop('MPOL_DEVELOPER_IDS',None)
+            print('PASS: personal chat deletion, new-message reopening, developer-only ban/unban/deletion and session revocation')
             print('PASS: developer RBAC, physical deletion, saved, archive, reactions, avatars, audio, two-user WebRTC signaling')
         engine.dispose()
 

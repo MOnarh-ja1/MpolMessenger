@@ -133,6 +133,23 @@ class AttachmentBlob(Base):
     data: Mapped[bytes] = mapped_column(LargeBinary)
 
 
+class ChatDismissal(Base):
+    """Per-user chat deletion: old history stays hidden only for that user."""
+    __tablename__ = 'chat_dismissals'
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey('chats.id'), primary_key=True)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class AccountModeration(Base):
+    """Admin-only ban/deletion state, never determined by client-provided roles."""
+    __tablename__ = 'account_moderation'
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), primary_key=True)
+    state: Mapped[str] = mapped_column(String(12))  # banned / deleted
+    reason: Mapped[str] = mapped_column(String(300), default='')
+    moderator_id: Mapped[str] = mapped_column(String(24))
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
 class ChatArchive(Base):
     __tablename__ = 'chat_archives'
     user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), primary_key=True)
@@ -178,6 +195,12 @@ class ProfileEdit(BaseModel):
 class PasswordChange(BaseModel): old_password: str; new_password: str = Field(min_length=10,max_length=256)
 class MemberAdd(BaseModel): user_id: str
 class EmailConfirm(BaseModel): code: str = Field(min_length=8,max_length=8)
+class ModerationReason(BaseModel):
+    reason: str = Field(min_length=3, max_length=300)
+
+class ModerationDeletion(BaseModel):
+    confirm_id: str
+
 class ResetRequest(BaseModel): email: str
 class ResetConfirm(BaseModel):
     email: str
@@ -203,13 +226,18 @@ def issue_token(d: Session, user_id: str):
     d.commit()
     return token
 
+def moderation_state(d: Session, user_id: str) -> str | None:
+    record = d.get(AccountModeration, user_id)
+    return record.state if record else None
+
 def authed(authorization: str | None = Header(default=None), d: Session = Depends(db)) -> User:
     token = (authorization or '').removeprefix('Bearer ').strip()
     if not token: raise HTTPException(401,'Необходим вход')
     sess = d.get(SessionToken,hash_token(token))
     if sess is None or sess.expires_at < now(): raise HTTPException(401,'Сессия недействительна')
     user = d.get(User,sess.user_id)
-    if not user: raise HTTPException(401,'Пользователь не найден')
+    if not user or moderation_state(d, user.id):
+        raise HTTPException(401,'Аккаунт заблокирован или удалён')
     return user
 
 def is_developer(u: User) -> bool:
@@ -341,6 +369,7 @@ def login(body:Login,request:Request,d:Session=Depends(db)):
         else: ph.verify(u.password_hash,body.password)
     except Exception: raise HTTPException(401,'Неверный логин или пароль')
     if not u: raise HTTPException(401,'Неверный логин или пароль')
+    if moderation_state(d,u.id): raise HTTPException(403,'Аккаунт заблокирован или удалён')
     if ph.check_needs_rehash(u.password_hash): u.password_hash=ph.hash(body.password); d.commit()
     return {'token':issue_token(d,u.id),'user':private_user_json(u)}
 
@@ -367,6 +396,110 @@ def windows_update():
     return {'version':version,'required':True,
       'download_url':'https://github.com/MOnarh-ja1/MpolMessenger/releases/download/'+release+'/MpolMessenger.exe',
       'sha256':digest}
+
+def moderation_target(d:Session, actor:User, target_id:str) -> User:
+    target=d.get(User,target_id)
+    if not target:raise HTTPException(404,'Аккаунт не найден')
+    if target.id==actor.id or is_developer(target):
+        raise HTTPException(403,'Модерация собственного аккаунта или разработчика запрещена')
+    return target
+
+async def disconnect_moderated_user(user_id:str,kind:str):
+    for ws in list(sockets.get(user_id,())):
+        try:
+            await ws.send_json({'type':'account_moderated','kind':kind})
+            await ws.close(code=1008)
+        except Exception:pass
+        sockets[user_id].discard(ws)
+
+@app.get('/api/developer/users/{user_id}/status')
+def moderation_status(user_id:str,u:User=Depends(developer_only),d:Session=Depends(db)):
+    limit('admin-status:'+u.id,80,60)
+    target=moderation_target(d,u,user_id)
+    record=d.get(AccountModeration,target.id)
+    return {'user_id':target.id,'state':record.state if record else 'active'}
+
+@app.post('/api/developer/users/{user_id}/ban')
+async def moderation_ban(user_id:str,body:ModerationReason,u:User=Depends(developer_only),d:Session=Depends(db)):
+    limit('admin-ban:'+u.id,12,3600)
+    target=moderation_target(d,u,user_id)
+    old=d.get(AccountModeration,target.id)
+    if old and old.state=='deleted':raise HTTPException(409,'Аккаунт уже удалён')
+    if old:
+        old.state='banned';old.reason=body.reason.strip();old.changed_at=now();old.moderator_id=u.id
+    else:
+        d.add(AccountModeration(user_id=target.id,state='banned',reason=body.reason.strip(),
+                                moderator_id=u.id,changed_at=now()))
+    d.execute(delete(SessionToken).where(SessionToken.user_id==target.id))
+    d.commit()
+    await disconnect_moderated_user(target.id,'banned')
+    return {'ok':True,'state':'banned'}
+
+@app.delete('/api/developer/users/{user_id}/ban')
+async def moderation_unban(user_id:str,u:User=Depends(developer_only),d:Session=Depends(db)):
+    limit('admin-ban:'+u.id,12,3600)
+    target=moderation_target(d,u,user_id)
+    old=d.get(AccountModeration,target.id)
+    if old and old.state=='deleted':raise HTTPException(409,'Удалённый аккаунт восстановить нельзя')
+    if old:d.delete(old);d.commit()
+    return {'ok':True,'state':'active'}
+
+@app.delete('/api/developer/users/{user_id}')
+async def moderation_delete_account(user_id:str,body:ModerationDeletion,
+                                    u:User=Depends(developer_only),d:Session=Depends(db)):
+    """Irreversible account deactivation/PII erasure; preserve FK tombstone for other chats."""
+    limit('admin-delete:'+u.id,5,3600)
+    target=moderation_target(d,u,user_id)
+    if body.confirm_id!=target.id:raise HTTPException(400,'Для подтверждения введите точный ID')
+    old=d.get(AccountModeration,target.id)
+    if old and old.state=='deleted':raise HTTPException(409,'Аккаунт уже удалён')
+    # Anonymized tombstone prevents foreign key damage to other users' conversations.
+    target.nick='Удалённый аккаунт'
+    target.login='deleted_'+secrets.token_hex(15)
+    target.email=None
+    target.email_verified=False
+    target.password_hash=ph.hash(secrets.token_urlsafe(32))
+    target.avatar='◉'
+    target.description=''
+    target.status='invisible'
+    d.execute(delete(SessionToken).where(SessionToken.user_id==target.id))
+    d.execute(delete(EmailToken).where(EmailToken.user_id==target.id))
+    d.execute(delete(Friendship).where((Friendship.from_id==target.id)|(Friendship.to_id==target.id)))
+    d.execute(delete(Block).where((Block.actor_id==target.id)|(Block.target_id==target.id)))
+    d.execute(delete(MessageReaction).where(MessageReaction.user_id==target.id))
+    d.execute(delete(ChatArchive).where(ChatArchive.user_id==target.id))
+    d.execute(delete(ChatDismissal).where(ChatDismissal.user_id==target.id))
+    photo=d.get(ProfilePhoto,target.id)
+    if photo:d.delete(photo)
+    # Remove the deleted account's sent message content and attachment binaries.
+    own_messages=list(d.scalars(select(Message).where(Message.user_id==target.id)).all())
+    for msg in own_messages:
+        msg.body='';msg.deleted=True
+        msg.edited_at=now()
+    all_attachments=list(d.scalars(select(Attachment).where(Attachment.owner_id==target.id)).all())
+    for attachment in all_attachments:
+        d.execute(update(Message).where(Message.attachment_id==attachment.id).values(attachment_id=None))
+        d.execute(delete(AttachmentBlob).where(AttachmentBlob.attachment_id==attachment.id))
+        if SQLITE and attachment.file_path:
+            try:Path(attachment.file_path).unlink(missing_ok=True)
+            except OSError:pass
+        d.execute(delete(Attachment).where(Attachment.id==attachment.id))
+    # Reassign groups owned by the erased user; preserve other members' conversations.
+    for c in d.scalars(select(Chat).where(Chat.owner_id==target.id,Chat.is_group==True)).all():
+        remaining=d.scalar(select(Member).where(Member.chat_id==c.id,Member.user_id!=target.id))
+        if remaining:
+            c.owner_id=remaining.user_id
+            remaining.role='owner'
+    d.execute(delete(Member).where(Member.user_id==target.id,Member.chat_id.not_like('DM_%')))
+    if old:
+        old.state='deleted';old.reason='Аккаунт удалён';old.changed_at=now();old.moderator_id=u.id
+    else:
+        d.add(AccountModeration(user_id=target.id,state='deleted',reason='Аккаунт удалён',
+                                moderator_id=u.id,changed_at=now()))
+    d.commit()
+    await disconnect_moderated_user(target.id,'deleted')
+    return {'ok':True,'state':'deleted'}
+
 
 @app.get('/api/developer/status')
 def developer_status(u:User=Depends(developer_only)):
@@ -469,7 +602,7 @@ def reset_confirm(body:ResetConfirm,request:Request,d:Session=Depends(db)):
 @app.get('/api/users/{user_id}')
 def profile(user_id:str,u:User=Depends(authed),d:Session=Depends(db)):
     x=d.get(User,user_id)
-    if not x: raise HTTPException(404,'Пользователь не найден')
+    if not x or moderation_state(d,x.id)=='deleted': raise HTTPException(404,'Пользователь не найден')
     return user_json(x)
 
 @app.get('/api/friends')
@@ -486,7 +619,7 @@ def friend_requests(u:User=Depends(authed),d:Session=Depends(db)):
 async def request_friend(body:FriendRequest,u:User=Depends(authed),d:Session=Depends(db)):
     limit('friend:'+u.id,20,3600)
     x=d.get(User,body.target_id)
-    if not x or x.id==u.id:raise HTTPException(404,'Пользователь не найден')
+    if not x or x.id==u.id or moderation_state(d,x.id):raise HTTPException(404,'Пользователь не найден')
     if blocked(d,u.id,x.id):raise HTTPException(403,'Запрос недоступен')
     old=d.scalar(select(Friendship).where(((Friendship.from_id==u.id)&(Friendship.to_id==x.id)) | ((Friendship.from_id==x.id)&(Friendship.to_id==u.id))))
     if old:
@@ -511,7 +644,7 @@ async def answer_request(request_id:int,body:FriendRespond,u:User=Depends(authed
 
 @app.post('/api/users/{user_id}/block')
 async def block_user(user_id:str,u:User=Depends(authed),d:Session=Depends(db)):
-    if not d.get(User,user_id) or user_id==u.id:raise HTTPException(404,'Пользователь не найден')
+    if not d.get(User,user_id) or user_id==u.id or moderation_state(d,user_id)=='deleted':raise HTTPException(404,'Пользователь не найден')
     if not d.scalar(select(Block).where(Block.actor_id==u.id,Block.target_id==user_id)):
         d.add(Block(actor_id=u.id,target_id=user_id))
     for f in d.scalars(select(Friendship).where(((Friendship.from_id==u.id)&(Friendship.to_id==user_id))|((Friendship.from_id==user_id)&(Friendship.to_id==u.id)))).all():d.delete(f)
@@ -520,13 +653,18 @@ async def block_user(user_id:str,u:User=Depends(authed),d:Session=Depends(db)):
 
 @app.post('/api/dm/{user_id}')
 def open_dm(user_id:str,u:User=Depends(authed),d:Session=Depends(db)):
-    if not is_friend(d,u.id,user_id) or blocked(d,u.id,user_id):raise HTTPException(403,'Сначала добавьте пользователя в друзья')
+    if not is_friend(d,u.id,user_id) or blocked(d,u.id,user_id) or moderation_state(d,user_id):
+        raise HTTPException(403,'Переписка недоступна')
     a,b=sorted([u.id,user_id]);cid='DM_'+a+'_'+b
     c=d.get(Chat,cid)
     if not c:
         c=Chat(id=cid,is_group=False,owner_id=u.id)
         d.add(c);d.flush()
         d.add_all([Member(chat_id=cid,user_id=a),Member(chat_id=cid,user_id=b)])
+        d.commit()
+    dismissal=d.get(ChatDismissal,(u.id,cid))
+    if dismissal:
+        dismissal.hidden=False
         d.commit()
     return {'id':cid}
 
@@ -582,6 +720,25 @@ def saved_chat(u:User=Depends(authed),d:Session=Depends(db)):
         d.add(Member(chat_id=cid,user_id=u.id,role='owner'))
         d.commit()
     return {'id':cid}
+
+@app.delete('/api/chats/{chat_id}')
+async def remove_chat_from_my_list(chat_id:str,u:User=Depends(authed),d:Session=Depends(db)):
+    """Delete chat/history only for this account, never for another participant."""
+    get_member(d,chat_id,u.id)
+    if chat_id=='SAVED_'+u.id:
+        raise HTTPException(400,'Избранное удалить нельзя')
+    limit('delete-chat:'+u.id,30,3600)
+    record=d.get(ChatDismissal,(u.id,chat_id))
+    if record:
+        record.deleted_at=now()
+        record.hidden=True
+    else:
+        d.add(ChatDismissal(user_id=u.id,chat_id=chat_id,deleted_at=now(),hidden=True))
+    archive=d.get(ChatArchive,(u.id,chat_id))
+    if archive:d.delete(archive)
+    d.commit()
+    return {'ok':True,'deleted_for_me':True}
+
 
 @app.put('/api/chats/{chat_id}/archive')
 async def set_archive(chat_id:str,body:ArchiveChange,u:User=Depends(authed),d:Session=Depends(db)):
@@ -641,10 +798,17 @@ def chats(u:User=Depends(authed),d:Session=Depends(db)):
     result=[]
     for m in memberships:
         c=d.get(Chat,m.chat_id)
-        ms=d.scalar(select(Message).where(Message.chat_id==c.id,Message.deleted==False).order_by(Message.sent_at.desc()).limit(1))
+        if not c: continue
+        dismissed=d.get(ChatDismissal,(u.id,c.id))
+        visible_since=dismissed.deleted_at if dismissed else None
+        msg_query=select(Message).where(Message.chat_id==c.id,Message.deleted==False)
+        if visible_since:msg_query=msg_query.where(Message.sent_at>visible_since)
+        ms=d.scalar(msg_query.order_by(Message.sent_at.desc()).limit(1))
+        if dismissed and dismissed.hidden and not ms:continue
         users=list(d.scalars(select(Member.user_id).where(Member.chat_id==c.id)).all())
         peer = d.get(User,next((v for v in users if v!=u.id),u.id)) if not c.is_group else None
-        unread=d.scalar(select(func.count(Message.id)).where(Message.chat_id==c.id,Message.user_id!=u.id,Message.sent_at>m.read_at)) or 0
+        unread_after=max(m.read_at,visible_since) if visible_since else m.read_at
+        unread=d.scalar(select(func.count(Message.id)).where(Message.chat_id==c.id,Message.user_id!=u.id,Message.sent_at>unread_after)) or 0
         result.append({'id':c.id,'name':c.name if c.is_group else (peer.nick if peer else 'Диалог'),
                 'avatar':'♣' if c.is_group else (peer.avatar if peer else '◉'),
                 'is_group':c.is_group,'peer_id':peer.id if peer else None,
@@ -658,6 +822,8 @@ def chats(u:User=Depends(authed),d:Session=Depends(db)):
 def messages(chat_id:str,before:str|None=None,search:str|None=None,u:User=Depends(authed),d:Session=Depends(db)):
     get_member(d,chat_id,u.id)
     q=select(Message).where(Message.chat_id==chat_id,Message.deleted==False)
+    dismissed=d.get(ChatDismissal,(u.id,chat_id))
+    if dismissed:q=q.where(Message.sent_at>dismissed.deleted_at)
     if before:
         try: at=datetime.fromisoformat(before.replace('Z','+00:00')).replace(tzinfo=None)
         except ValueError:raise HTTPException(400,'Неверная дата')
@@ -673,7 +839,8 @@ async def send_message(chat_id:str,body:NewMessage,u:User=Depends(authed),d:Sess
     c=d.get(Chat,chat_id)
     if not c.is_group:
         peer=next((x for x in members_of(d,chat_id) if x!=u.id),None)
-        if peer and blocked(d,u.id,peer):raise HTTPException(403,'Сообщения недоступны')
+        if peer and (blocked(d,u.id,peer) or moderation_state(d,peer)):
+            raise HTTPException(403,'Сообщения недоступны')
     if not body.body.strip() and not body.attachment_id:raise HTTPException(400,'Пустое сообщение')
     if body.reply_to:
         reply=d.get(Message,body.reply_to)
@@ -791,7 +958,8 @@ async def websocket(ws:WebSocket):
             await ws.close(code=1008);return
         with SessionLocal() as d:
             sess=d.get(SessionToken,hash_token(auth['token']))
-            if not sess or sess.expires_at<now():await ws.close(code=1008);return
+            if not sess or sess.expires_at<now() or moderation_state(d,sess.user_id):
+                await ws.close(code=1008);return
             uid=sess.user_id
             friends=[f.to_id if f.from_id==uid else f.from_id for f in d.scalars(select(Friendship).where(Friendship.state=='accepted',((Friendship.from_id==uid)|(Friendship.to_id==uid)))).all()]
             user=d.get(User,uid)
@@ -801,6 +969,10 @@ async def websocket(ws:WebSocket):
         if show:await emit(friends,{'type':'presence','user_id':uid,'online':True})
         while True:
             event=await ws.receive_json()
+            with SessionLocal() as d:
+                if moderation_state(d,uid):
+                    await ws.close(code=1008);return
+            if not isinstance(event,dict):continue
             if event.get('type')=='ping':await ws.send_json({'type':'pong'})
             if event.get('type')=='typing':
                 cid=event.get('chat_id')

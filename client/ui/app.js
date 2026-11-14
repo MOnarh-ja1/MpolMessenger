@@ -164,6 +164,19 @@ async function toggleChatArchive(){
   updateFilters();renderList();toast(c.archived?'Вернули из архива':'Переписка в архиве')}
  catch(e){toast(errorText(e))}
 }
+async function deleteActiveChat(){
+ const c=state.active;if(!c||c.is_saved)return;
+ if(!confirm('Удалить чат «'+c.name+'» у себя? У собеседника переписка останется.'))return;
+ try{
+  await api('/chats/'+encodeURIComponent(c.id),{method:'DELETE'});
+  if(state.active?.id===c.id){
+   state.active=null;state.messages=[];state.reply=null;
+   $('openedChat').classList.add('hidden');$('emptyChat').classList.remove('hidden');
+   $('mainScreen').classList.remove('mobile-chat-open');
+  }
+  closeModal();await refreshAll();renderList();toast('Чат удалён только у вас');
+ }catch(e){toast(errorText(e))}
+}
 function updateFilters(){
  document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('active',b.dataset.filter===state.chatFilter))
 }
@@ -207,6 +220,8 @@ function updateHeader(){if(!state.active)return;const c=state.active;
  $('chatAvatar').innerHTML=(c.avatar==='📷'&&c.peer_id)?'<img class="avatar-photo" src="/api/avatars/'+encodeURIComponent(c.peer_id)+'" alt="">':esc(c.avatar);
  $('chatName').textContent=c.name;$('chatPresence').textContent=c.is_saved?'Только вы':c.is_group?c.members.length+' участников':c.online?'● В сети':'Не в сети';
  $('archiveChat').classList.toggle('hidden',!!c.is_saved);
+ $('deleteChat').classList.toggle('hidden',!!c.is_saved);
+ $('openChatProfile').classList.toggle('hidden',c.is_group||c.is_saved||!c.peer_id);
  $('archiveChat').title=c.archived?'Вернуть из архива':'Отправить в архив';
  $('voiceCall').classList.toggle('hidden',c.is_group||c.is_saved);
  $('videoCall').classList.toggle('hidden',c.is_group||c.is_saved);
@@ -265,6 +280,10 @@ async function uploadFile(file){if(!file||!state.active)return;if(file.size>12*1
 function wsConnect(){if(!storage.token||!state.me)return;const existing=state.ws;if(existing&&(existing.readyState===WebSocket.OPEN||existing.readyState===WebSocket.CONNECTING))return;try{const proto=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(proto+'//'+location.host+'/ws');state.ws=ws;
  ws.onopen=()=>{state.retry=0;ws.send(JSON.stringify({type:'auth',token:storage.token}))};
  ws.onmessage=async e=>{if(state.ws!==ws||!state.me)return;let m;try{m=JSON.parse(e.data)}catch{return}
+  if(m.type==='account_moderated'){
+   toast(m.kind==='banned'?'Ваш аккаунт заблокирован':'Ваш аккаунт удалён');
+   signout(false);return;
+  }
   if(m.type==='call_signal'){onCallSignal(m);return}
   if(m.type==='authenticated'){refreshAll().catch(()=>{});if(state.active)loadMessages().catch(()=>{});setConnectionStatus(true);return}
   if(m.type==='friend_request'){refreshAll().catch(()=>{});return}
@@ -300,10 +319,75 @@ function notifyNewMessage(m){if(state.sound){try{const a=new(window.AudioContext
 function modal(title,content){$('modalTitle').textContent=title;$('modalContent').innerHTML=content;$('modalLayer').classList.remove('hidden')}
 function closeModal(){$('modalLayer').classList.add('hidden');$('modalContent').replaceChildren()}
 function findFriends(){modal('Найти пользователя',`<p>Введите уникальный ID, например <strong>MP1234567890</strong>.</p><label>ID пользователя<input id="friendId" placeholder="MP..." maxlength="24"/></label><button class="button" id="findUserBtn">Найти</button><div id="findResult"></div>`);$('findUserBtn').onclick=async()=>{
- const id=$('friendId').value.trim().toUpperCase();try{const u=await api('/users/'+encodeURIComponent(id));const b=$('findResult');b.innerHTML=`<div class="user-line">${avatar(u.avatar,u.online)}<div><strong>${esc(u.nick)}</strong><div class="secondary">${esc(u.id)}</div></div><button id="inviteBtn">Добавить</button></div>`;$('inviteBtn').onclick=async()=>{try{const r=await api('/friends/request',{method:'POST',body:{target_id:u.id}});toast(r.state==='accepted'?'Теперь вы друзья':'Заявка отправлена');closeModal();refreshAll()}catch(e){toast(errorText(e))}}}catch(e){toast(errorText(e))}};}
-function openFriend(f){modal(f.nick,`<p><strong>ID:</strong> ${esc(f.id)}<br><strong>Статус:</strong> ${f.online?'В сети':'Не в сети'}<br>${esc(f.description)}</p><button id="openDm" class="button">Открыть переписку</button><button id="blockFriend" class="button outlined">Заблокировать</button>`);
- $('openDm').onclick=async()=>{try{const c=await api('/dm/'+encodeURIComponent(f.id),{method:'POST'});closeModal();await refreshAll();renderTab('chats');selectChat(c.id)}catch(e){toast(errorText(e))}};
- $('blockFriend').onclick=async()=>{if(!confirm('Заблокировать пользователя?'))return;try{await api('/users/'+encodeURIComponent(f.id)+'/block',{method:'POST'});closeModal();await refreshAll();toast('Пользователь заблокирован')}catch(e){toast(errorText(e))}}}
+ const id=$('friendId').value.trim().toUpperCase();try{const u=await api('/users/'+encodeURIComponent(id));const b=$('findResult');b.innerHTML=`<div class="user-line">${avatar(u.avatar,u.online)}<div><strong>${esc(u.nick)}</strong><div class="secondary">${esc(u.id)}</div></div><button id="viewFoundProfile">Профиль</button><button id="inviteBtn">Добавить</button></div>`;$('viewFoundProfile').onclick=()=>showUserProfile(u);$('inviteBtn').onclick=async()=>{try{const r=await api('/friends/request',{method:'POST',body:{target_id:u.id}});toast(r.state==='accepted'?'Теперь вы друзья':'Заявка отправлена');closeModal();refreshAll()}catch(e){toast(errorText(e))}}}catch(e){toast(errorText(e))}};}
+async function openUserProfile(id){
+ try{const u=await api('/users/'+encodeURIComponent(id));showUserProfile(u)}
+ catch(e){toast(errorText(e))}
+}
+function showUserProfile(u){
+ const mine=u.id===state.me?.id;
+ const isFriend=state.friends.some(f=>f.id===u.id);
+ let html='<div class="profile-hero"><div class="profile-hero-avatar">'+
+  (u.avatar==='📷'?'<img src="/api/avatars/'+encodeURIComponent(u.id)+'" alt="Аватар">':esc(u.avatar||'◉'))+
+  '</div><div class="profile-hero-name"><h3>'+esc(u.nick)+'</h3><p>'+
+  esc(u.description||'Пользователь MPOL')+'</p><p class="secondary">ID: '+
+  esc(u.id)+'</p><p class="secondary">'+(u.online?'● В сети':'Не в сети')+'</p></div></div>';
+ if(isFriend&&!mine)html+='<button id="openDmProfile" class="button">Открыть переписку</button>';
+ if(!mine)html+='<button id="blockUserProfile" class="button outlined">Заблокировать для себя</button>';
+ if(state.me?.is_developer&&!mine)html+='<section class="moderation-panel"><button type="button" class="button outlined" id="openModeration">⚑ Модерация</button></section>';
+ modal('Профиль пользователя',html);
+ $('openDmProfile')?.addEventListener('click',async()=>{
+  try{const c=await api('/dm/'+encodeURIComponent(u.id),{method:'POST'});
+   closeModal();await refreshAll();renderTab('chats');await selectChat(c.id)}
+  catch(e){toast(errorText(e))}
+ });
+ $('blockUserProfile')?.addEventListener('click',async()=>{
+  if(!confirm('Заблокировать '+u.nick+' только для себя?'))return;
+  try{await api('/users/'+encodeURIComponent(u.id)+'/block',{method:'POST'});
+   closeModal();await refreshAll();toast('Пользователь заблокирован для вас')}
+  catch(e){toast(errorText(e))}
+ });
+ $('openModeration')?.addEventListener('click',()=>openModerationPanel(u));
+}
+async function openModerationPanel(u){
+ if(!state.me?.is_developer)return;
+ try{
+  const info=await api('/developer/users/'+encodeURIComponent(u.id)+'/status');
+  const isBanned=info.state==='banned',isDeleted=info.state==='deleted';
+  let html='<p class="secondary">Аккаунт '+esc(u.nick)+' · ID: '+esc(u.id)+'</p>';
+  if(isDeleted)html+='<p class="error">Аккаунт удалён</p>';
+  else{
+   html+='<p class="secondary">Статус: '+(isBanned?'Забанен':'Активен')+'</p>';
+   if(isBanned)html+='<button id="moderationUnban" class="button outlined">Разбанить пользователя</button>';
+   else html+='<label>Причина бана<input id="moderationReason" maxlength="300" placeholder="Причина блокировки"></label><button id="moderationBan" class="button outlined">Забанить пользователя</button>';
+   html+='<div class="moderation-danger"><p>Удаление необратимо. Пароль, личные данные и доступ аккаунта будут удалены. Чужие переписки сохранятся.</p><label>Введите точный ID для подтверждения<input id="moderationConfirm" maxlength="24" placeholder="'+esc(u.id)+'"></label><button id="moderationDelete" class="button danger">Удалить аккаунт</button></div>';
+  }
+  modal('Модерация · '+u.nick,html);
+  $('moderationBan')?.addEventListener('click',async()=>{
+   const reason=$('moderationReason').value.trim();
+   if(reason.length<3){toast('Укажите причину бана');return}
+   if(!confirm('Забанить '+u.id+'? Все его активные сессии будут завершены.'))return;
+   try{await api('/developer/users/'+encodeURIComponent(u.id)+'/ban',{method:'POST',body:{reason}});
+    toast('Аккаунт забанен');openModerationPanel(u)}
+   catch(e){toast(errorText(e))}
+  });
+  $('moderationUnban')?.addEventListener('click',async()=>{
+   if(!confirm('Разбанить '+u.id+'?'))return;
+   try{await api('/developer/users/'+encodeURIComponent(u.id)+'/ban',{method:'DELETE'});
+    toast('Аккаунт разбанен');openModerationPanel(u)}
+   catch(e){toast(errorText(e))}
+  });
+  $('moderationDelete')?.addEventListener('click',async()=>{
+   const id=$('moderationConfirm').value.trim();
+   if(id!==u.id){toast('Введите точный ID аккаунта');return}
+   if(!confirm('Безвозвратно удалить аккаунт '+u.id+'? Это нельзя отменить.'))return;
+   try{await api('/developer/users/'+encodeURIComponent(u.id),{method:'DELETE',body:{confirm_id:id}});
+    closeModal();await refreshAll();toast('Аккаунт удалён')}
+   catch(e){toast(errorText(e))}
+  });
+ }catch(e){toast(errorText(e))}
+}
+function openFriend(f){openUserProfile(f.id)}
 function createGroup(){const options=state.friends.map(f=>`<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-add-member="${esc(f.id)}">${esc(f.nick)}</label>`).join('');
  modal('Создать группу',`<p>Групповой чат для друзей.</p><label>Название группы<input id="groupName" maxlength="80" placeholder="Например, Наша команда"></label><div class="secondary">Добавить участников</div><div class="list-mini">${options||'<p>Сначала добавьте друзей</p>'}</div><button id="makeGroup" class="button">Создать группу</button>`);
  $('makeGroup').onclick=async()=>{const name=$('groupName').value.trim(),members=[...document.querySelectorAll('[data-add-member]:checked')].map(x=>x.dataset.addMember);try{const c=await api('/groups',{method:'POST',body:{name,members}});closeModal();await refreshAll();renderTab('groups');selectChat(c.id)}catch(e){toast(errorText(e))}};}
@@ -322,11 +406,15 @@ async function copyAccountId(){
 function openRequests(){const html=state.requests.map(r=>`<div class="notice-item" data-request="${r.request_id}">${avatar(r.user.avatar)}<div class="name"><strong>${esc(r.user.nick)}</strong><div class="secondary">${esc(r.user.id)}</div></div><button data-answer="1">✓</button><button data-answer="0">✕</button></div>`).join('');modal('Заявки в друзья',html||'<p>Новых заявок пока нет.</p>');document.querySelectorAll('[data-request]').forEach(el=>el.querySelectorAll('[data-answer]').forEach(btn=>btn.onclick=async()=>{try{await api('/friends/requests/'+el.dataset.request,{method:'POST',body:{accept:btn.dataset.answer==='1'}});await refreshAll();openRequests()}catch(e){toast(errorText(e))}}))}
 function chatDetails(){if(!state.active)return;const c=state.active;
  let html=`<p><strong>${esc(c.name)}</strong><br>${c.is_group?'Группа · '+c.members.length+' участников':'Личная переписка'}</p>`;
+ if(!c.is_group&&c.peer_id)html+='<button id="openChatDetailsProfile" class="button">Профиль собеседника</button>';
+ if(!c.is_saved)html+='<button id="deleteFromChatDetails" class="button danger outlined">Удалить чат у себя</button>';
  if(c.is_group){const choices=state.friends.filter(x=>!c.members.includes(x.id));html+=`<div class="secondary">Добавить участника</div><label><select id="addMemberSelect"><option value="">Выберите друга</option>${choices.map(u=>`<option value="${esc(u.id)}">${esc(u.nick)}</option>`).join('')}</select></label><button class="button" id="addMemberBtn">Добавить в группу</button>`;
  html+=`<p class="secondary">Участники: ${c.members.map(esc).join(', ')}</p>`;
  if(c.role!=='owner')html+='<button id="leaveGroup" class="button outlined">Покинуть группу</button>';
  }
  modal('Информация о чате',html);
+ $('openChatDetailsProfile')?.addEventListener('click',()=>openUserProfile(c.peer_id));
+ $('deleteFromChatDetails')?.addEventListener('click',deleteActiveChat);
  $('addMemberBtn')?.addEventListener('click',async()=>{try{await api('/groups/'+c.id+'/members',{method:'POST',body:{user_id:$('addMemberSelect').value}});closeModal();await refreshAll();toast('Участник добавлен')}catch(e){toast(errorText(e))}});
  $('leaveGroup')?.addEventListener('click',async()=>{if(!confirm('Покинуть группу?'))return;try{await api('/groups/'+c.id+'/members/'+state.me.id,{method:'DELETE'});closeModal();state.active=null;$('openedChat').classList.add('hidden');$('emptyChat').classList.remove('hidden');await refreshAll()}catch(e){toast(errorText(e))}})
 }
@@ -391,6 +479,8 @@ $('emojiBtn').onclick=toggleEmojiPalette;$('messageInput').oninput=()=>{if(state
 $('clearReply').onclick=()=>{state.reply=null;replyUpdate()};$('searchMessages').onclick=()=>{$('messageSearchBar').classList.toggle('hidden');$('messageSearchInput').focus()};
 $('messageSearchInput').oninput=async e=>{try{if(!state.active)return;state.messages=await api('/chats/'+state.active.id+'/messages'+(e.target.value?'?search='+encodeURIComponent(e.target.value):''));renderMessages()}catch(err){toast(errorText(err))}};
 $('messageSearchClear').onclick=()=>{$('messageSearchInput').value='';$('messageSearchBar').classList.add('hidden');loadMessages()};$('chatInfo').onclick=chatDetails;
+$('deleteChat').onclick=deleteActiveChat;
+$('openChatProfile').onclick=()=>{if(state.active?.peer_id)openUserProfile(state.active.peer_id)};
 $('closeModal').onclick=closeModal;$('modalBackdrop').onclick=closeModal;document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
 setInterval(()=>{if(state.ws?.readyState===WebSocket.OPEN)state.ws.send(JSON.stringify({type:'ping'}));if(location.hostname==='127.0.0.1'||location.hostname==='localhost')fetch('/__ping').catch(()=>{})},15000);
 setInterval(()=>{if(!state.me)serverHealth()},10000);
