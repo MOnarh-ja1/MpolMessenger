@@ -76,6 +76,23 @@ async function main(){
    console.log('PASS responsive '+width+'x'+height+' composer bottom '+Math.round(info.composer.bottom));
   }
 
+  // User ID belongs only to the My Account profile, not the main chat sidebar.
+  const profileCheck=await page.evaluate(()=>{
+   const hasSidebarID=!!document.getElementById('myIdCard');
+   state.me={id:'MPTEST123456',nick:'Тестовый профиль',avatar:'◉',
+     description:'',email:null,email_verified:false,status:'online',is_developer:false};
+   openSettings();
+   const content=document.getElementById('modalContent');
+   return {hasSidebarID,hasAccount:!!content.querySelector('#accountDetails'),
+     id:content.querySelector('#accountDetails code')?.textContent,
+     copied:!!content.querySelector('#copyProfileId')};
+  });
+  assert.equal(profileCheck.hasSidebarID,false,'ID should not appear in the chat list');
+  assert.ok(profileCheck.hasAccount&&profileCheck.copied,'Account ID card is required in the profile');
+  assert.equal(profileCheck.id,'MPTEST123456');
+  await page.evaluate(()=>closeModal());
+  console.log('PASS: unique account ID appears only inside My Account settings');
+
   // iPhone-sized viewport: only one pane should be visible, input never clipped.
   for(const [width,height] of [[390,844],[375,667],[320,568]]){
    await page.setViewportSize({width,height});
