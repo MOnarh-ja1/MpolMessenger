@@ -222,6 +222,9 @@ function updateHeader(){if(!state.active)return;const c=state.active;
  $('archiveChat').classList.toggle('hidden',!!c.is_saved);
  $('deleteChat').classList.toggle('hidden',!!c.is_saved);
  $('openChatProfile').classList.toggle('hidden',c.is_group||c.is_saved||!c.peer_id);
+ const head=$('chatPeerHeader');
+ head.disabled=c.is_group||c.is_saved||!c.peer_id;
+ head.title=head.disabled?'Информация о переписке':'Открыть профиль собеседника';
  $('archiveChat').title=c.archived?'Вернуть из архива':'Отправить в архив';
  $('voiceCall').classList.toggle('hidden',c.is_group||c.is_saved);
  $('videoCall').classList.toggle('hidden',c.is_group||c.is_saved);
@@ -263,7 +266,8 @@ function pickReaction(m){
 }
 async function messageAction(action,m){
  if(action==='react'){pickReaction(m);return}
- if(action==='copy'){try{await navigator.clipboard.writeText(m.body);toast('Текст скопирован')}catch{toast('Не удалось скопировать')}return}
+ if(action==='copy'){const done=await copyMpolText(m.body);
+ toast(done?'Текст скопирован':'Не удалось скопировать. Нажмите и удерживайте сообщение.');return}
  if(action==='reply'){state.reply=m.id;replyUpdate();$('messageInput').focus();return}if(action==='edit'){
   modal('Редактировать сообщение',`<label>Текст<textarea id="editBody" rows="4" maxlength="4000">${esc(m.body)}</textarea></label><button id="saveEdit" class="button">Сохранить</button>`);
   $('saveEdit').onclick=async()=>{try{await api('/messages/'+m.id,{method:'PATCH',body:{body:$('editBody').value}});closeModal();await loadMessages()}catch(e){toast(errorText(e))}};
@@ -331,11 +335,15 @@ function showUserProfile(u){
   (u.avatar==='📷'?'<img src="/api/avatars/'+encodeURIComponent(u.id)+'" alt="Аватар">':esc(u.avatar||'◉'))+
   '</div><div class="profile-hero-name"><h3>'+esc(u.nick)+'</h3><p>'+
   esc(u.description||'Пользователь MPOL')+'</p><p class="secondary">ID: '+
-  esc(u.id)+'</p><p class="secondary">'+(u.online?'● В сети':'Не в сети')+'</p></div></div>';
+  esc(u.id)+'</p><p class="secondary">'+(u.online?'● В сети':'Не в сети')+'</p></div></div>'+
+ '<button id="copyPeerId" type="button" class="button outlined">Скопировать ID</button>';
  if(isFriend&&!mine)html+='<button id="openDmProfile" class="button">Открыть переписку</button>';
  if(!mine)html+='<button id="blockUserProfile" class="button outlined">Заблокировать для себя</button>';
  if(state.me?.is_developer&&!mine)html+='<section class="moderation-panel"><button type="button" class="button outlined" id="openModeration">⚑ Модерация</button></section>';
  modal('Профиль пользователя',html);
+ $('copyPeerId')?.addEventListener('click',async()=>{
+  const ok=await copyMpolText(u.id);toast(ok?'ID пользователя скопирован':'Не удалось скопировать ID');
+ });
  $('openDmProfile')?.addEventListener('click',async()=>{
   try{const c=await api('/dm/'+encodeURIComponent(u.id),{method:'POST'});
    closeModal();await refreshAll();renderTab('chats');await selectChat(c.id)}
@@ -395,13 +403,46 @@ async function respondFriendRequest(id,accept){
  try{await api('/friends/requests/'+encodeURIComponent(id),{method:'POST',body:{accept}});await refreshAll();toast(accept?'Заявка принята — теперь вы друзья':'Заявка отклонена')}
  catch(e){toast(errorText(e))}
 }
+// Standard HTTPS clipboard API first; use an editable selection fallback
+// when the EXE permission policy or a mobile browser rejects writeText().
+async function copyMpolText(value){
+ const text=String(value??'');
+ if(!text)return false;
+ try{
+  if(navigator.clipboard?.writeText){
+   await navigator.clipboard.writeText(text);
+   return true;
+  }
+ }catch(err){console.warn('MPOL Clipboard API unavailable, falling back:',err?.name||err)}
+ // execCommand is deprecated, but still a useful fallback in older WebViews.
+ const el=document.createElement('textarea');
+ const oldFocus=document.activeElement;
+ const oldSelection=window.getSelection?.();
+ const oldRanges=[];
+ if(oldSelection){
+  for(let i=0;i<oldSelection.rangeCount;i++)oldRanges.push(oldSelection.getRangeAt(i));
+ }
+ el.value=text;el.setAttribute('readonly','');
+ el.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;z-index:-1;font-size:16px';
+ document.body.appendChild(el);
+ let ok=false;
+ try{
+  el.focus({preventScroll:true});el.select();el.setSelectionRange(0,text.length);
+  ok=!!document.execCommand('copy');
+ }catch{}
+ finally{
+  el.remove();
+  try{oldFocus?.focus?.({preventScroll:true})}catch{}
+  if(oldSelection){
+   try{oldSelection.removeAllRanges();oldRanges.forEach(r=>oldSelection.addRange(r))}catch{}
+  }
+ }
+ return ok;
+}
 async function copyAccountId(){
  const id=state.me?.id;if(!id)return;
- try{
-  if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(id);
-  else{const el=document.createElement('textarea');el.value=id;el.setAttribute('readonly','');el.style.position='fixed';el.style.left='-9999px';document.body.append(el);el.select();const ok=document.execCommand('copy');el.remove();if(!ok)throw Error('copy denied')}
-  toast('ID скопирован: '+id);
- }catch{toast('Не удалось скопировать ID. Выделите его вручную в настройках.')}
+ const copied=await copyMpolText(id);
+ toast(copied?'ID скопирован: '+id:'Копирование недоступно. Нажмите и удерживайте ID для выбора текста.');
 }
 function openRequests(){const html=state.requests.map(r=>`<div class="notice-item" data-request="${r.request_id}">${avatar(r.user.avatar)}<div class="name"><strong>${esc(r.user.nick)}</strong><div class="secondary">${esc(r.user.id)}</div></div><button data-answer="1">✓</button><button data-answer="0">✕</button></div>`).join('');modal('Заявки в друзья',html||'<p>Новых заявок пока нет.</p>');document.querySelectorAll('[data-request]').forEach(el=>el.querySelectorAll('[data-answer]').forEach(btn=>btn.onclick=async()=>{try{await api('/friends/requests/'+el.dataset.request,{method:'POST',body:{accept:btn.dataset.answer==='1'}});await refreshAll();openRequests()}catch(e){toast(errorText(e))}}))}
 function chatDetails(){if(!state.active)return;const c=state.active;
@@ -481,6 +522,7 @@ $('messageSearchInput').oninput=async e=>{try{if(!state.active)return;state.mess
 $('messageSearchClear').onclick=()=>{$('messageSearchInput').value='';$('messageSearchBar').classList.add('hidden');loadMessages()};$('chatInfo').onclick=chatDetails;
 $('deleteChat').onclick=deleteActiveChat;
 $('openChatProfile').onclick=()=>{if(state.active?.peer_id)openUserProfile(state.active.peer_id)};
+$('chatPeerHeader').onclick=()=>{if(state.active?.peer_id)openUserProfile(state.active.peer_id)};
 $('closeModal').onclick=closeModal;$('modalBackdrop').onclick=closeModal;document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
 setInterval(()=>{if(state.ws?.readyState===WebSocket.OPEN)state.ws.send(JSON.stringify({type:'ping'}));if(location.hostname==='127.0.0.1'||location.hostname==='localhost')fetch('/__ping').catch(()=>{})},15000);
 setInterval(()=>{if(!state.me)serverHealth()},10000);
@@ -533,7 +575,7 @@ document.addEventListener('keydown',e=>{
  if((e.ctrlKey||e.metaKey)&&['+','-','=','0'].includes(e.key))e.preventDefault();
 });
 document.addEventListener('selectstart',e=>{
- if(!e.target.closest('input,textarea,[contenteditable="true"]'))e.preventDefault();
+ if(!e.target.closest('input,textarea,[contenteditable="true"],.msg-text,.msg-reply,.msg-sender,.profile-id-row code,.profile-hero-name,.copyable-text'))e.preventDefault();
 });
 // Compact iPhone chat navigation: return to lists without losing messages.
 // Safari shrinks visualViewport for the keyboard, but not always CSS 100dvh.
