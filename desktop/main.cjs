@@ -5,7 +5,8 @@ const path = require('node:path');
 const { SERVER_ORIGIN, isMpolUrl, canOpenExternal,
   safeFilename, normalizeMediaTypes } = require('./lib/security.cjs');
 
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.3.1';
+const { offerDesktopUpdate } = require('./lib/updater.cjs');
 const APP_URL = SERVER_ORIGIN + '/?mpol_client=' + APP_VERSION;
 const WINDOW_PARTITION = 'persist:mpol-desktop-v23';
 let mainWindow;
@@ -174,6 +175,12 @@ function createWindow() {
   win.webContents.on('did-fail-load',(_event,code,_desc,url,isMainFrame)=>{
     if (isMainFrame && code!==-3 && isMpolUrl(url)) {
       win.loadFile(path.join(__dirname,'offline.html')).catch(()=>{});
+    }
+  });
+  win.webContents.once('did-finish-load',()=>{
+    // Check releases silently; prompt only if a newer verified desktop EXE exists.
+    if (win.webContents.getURL().startsWith(SERVER_ORIGIN+'/')) {
+      offerDesktopUpdate(win,APP_VERSION).catch(()=>{});
     }
   });
   win.loadURL(APP_URL).catch(()=>{
