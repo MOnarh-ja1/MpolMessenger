@@ -102,7 +102,7 @@ func openApp(addr string)error{
  for _,cmd:=range []string{"xdg-open","open"}{if path,err:=exec.LookPath(cmd);err==nil{return exec.Command(path,appUrl).Start()}}
  return errors.New("browser not found")
 }
-const clientVersion = "2.1.0"
+const clientVersion = "2.2.0"
 
 type updateManifest struct {
  Version string `json:"version"`
@@ -147,7 +147,7 @@ func checkWindowsUpdate(base string) bool {
  dst:=filepath.Join(dir,"MpolMessenger_"+m.Version+".exe")
  tmp:=dst+".tmp"
  request,err:=http.NewRequest("GET",m.DownloadURL,nil);if err!=nil{return false}
- request.Header.Set("User-Agent","MpolMessengerUpdater/2.1")
+ request.Header.Set("User-Agent","MpolMessengerUpdater/2.2")
  download,err:=(&http.Client{Timeout:120*time.Second}).Do(request)
  if err!=nil{return false}
  defer download.Body.Close()
