@@ -287,6 +287,21 @@ function createPeer(){
    tryRecoverCall(c);
   }else if(pc.connectionState==='closed'&&currentCall===c){endCall(false)}
  };
+ pc.oniceconnectionstatechange=()=>{
+  if(currentCall!==c)return;
+  const ice=pc.iceConnectionState;
+  if(ice==='connected'||ice==='completed'){
+   if(c.connectWatchdog){clearTimeout(c.connectWatchdog);c.connectWatchdog=null}
+   playIncomingCallAudio(c);
+   if(!c.started){
+    c.started=Date.now();stopCallRingtone();
+    $call('callStatus').textContent='Соединено';
+    callTick=setInterval(updateCallDuration,1000);monitorCallQuality();
+   }
+  }else if(ice==='failed')tryRecoverCall(c);
+  else if(ice==='disconnected')setTimeout(()=>tryRecoverCall(c),4000);
+ };
+ startCallWatchdog(c);
  return pc;
 }
 async function applyQueuedIce(){
@@ -295,6 +310,7 @@ async function applyQueuedIce(){
 }
 async function acceptIncomingCall(){
  const c=currentCall;if(!c||!c.incoming)return;
+ prepareCallAudioFromGesture();
  try{
   c.stream=await getLocalCallMedia(c.mode);c.incoming=false;stopCallRingtone();
   callLayout();$call('callStatus').textContent='Подключаемся…';
@@ -346,6 +362,7 @@ function endCall(notify=true){
  stopCallRingtone();currentCall=null;if(callTick){clearInterval(callTick);callTick=null}
  if(callQualityTick){clearInterval(callQualityTick);callQualityTick=null}
  if(c.timeout)clearTimeout(c.timeout);
+ if(c.connectWatchdog)clearTimeout(c.connectWatchdog);
  try{c.pc?.close()}catch{}
  for(const track of c.stream?.getTracks()||[])track.stop();
  for(const track of c.screen?.getTracks()||[])track.stop();
@@ -392,9 +409,18 @@ $call('noiseSuppression').onchange=async e=>{
  }catch{toast('Это устройство не поддерживает изменение шумоподавления')}
 };
 $call('enableCallAudio').onclick=()=>{
- $call('remoteAudio').play().catch(()=>{});$call('remoteVideo').play().catch(()=>{});
- callAudioContext?.resume().catch(()=>{});toast('Звук включён');
+ prepareCallAudioFromGesture();
+ if(currentCall)playIncomingCallAudio(currentCall);
+ if(currentCall?.mode==='video')$call('remoteVideo').play()?.catch?.(()=>{});
+ toast('Проверяем звук собеседника');
 };
+document.addEventListener('visibilitychange',()=>{
+ if(!document.hidden&&currentCall){
+  playIncomingCallAudio(currentCall);
+  if(currentCall.pc?.connectionState==='failed'||currentCall.pc?.iceConnectionState==='failed')
+   tryRecoverCall(currentCall);
+ }
+});
 $call('callVolume').oninput=e=>{
  const volume=Number(e.target.value)/100;$call('remoteAudio').volume=volume;
 };
