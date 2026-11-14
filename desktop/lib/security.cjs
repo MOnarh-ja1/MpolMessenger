@@ -5,9 +5,22 @@ const GITHUB_REPO = 'https://github.com/MOnarh-ja1/MpolMessenger';
 function parseUrl(value) {
   try { return new URL(value); } catch { return null; }
 }
-function isMpolUrl(value) {
+// No silent failover to untrusted servers: all alternates must be selected
+// manually and verified against the authenticated MPOL health marker.
+function normalizeServerOrigin(value) {
+  const u=parseUrl(String(value||'').trim());
+  if(!u || u.protocol!=='https:' || u.username || u.password || u.search || u.hash ||
+     u.pathname!=='/' || u.port || u.hostname.length>253 ||
+     !/^[a-z0-9.-]+$/i.test(u.hostname) || !u.hostname.includes('.') ||
+     u.hostname.startsWith('.') || u.hostname.endsWith('.') ||
+     u.hostname.includes('..') ||
+     /^(localhost|.*\\.localhost|.*\\.local|.*\\.internal)$/i.test(u.hostname) ||
+     /^\\d+\\.\\d+\\.\\d+\\.\\d+$/.test(u.hostname)) return null;
+  return u.origin;
+}
+function isMpolUrl(value, trustedOrigin=SERVER_ORIGIN) {
   const u = parseUrl(value);
-  return !!u && u.origin === SERVER_ORIGIN && (u.protocol === 'https:');
+  return !!u && normalizeServerOrigin(trustedOrigin) === u?.origin && u.protocol === 'https:';
 }
 function canOpenExternal(value) {
   const u = parseUrl(value);
@@ -31,5 +44,5 @@ function normalizeMediaTypes(input) {
 function mediaKey(types) {
   return normalizeMediaTypes(types).join('+');
 }
-module.exports = { SERVER_ORIGIN, GITHUB_REPO, isMpolUrl,
+module.exports = { SERVER_ORIGIN, GITHUB_REPO, normalizeServerOrigin, isMpolUrl,
   canOpenExternal, safeFilename, normalizeMediaTypes, mediaKey };
