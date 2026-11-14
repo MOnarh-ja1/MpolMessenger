@@ -1,4 +1,4 @@
-> **Статус публикации:** исходные материалы подготовлены, но готовый EXE и архив ещё не добавлены в GitHub Releases. Пока здесь опубликована документация. Не считайте публичный онлайн-сервер развёрнутым.
+> ✅ **GitHub Beta Release опубликован:** [скачать EXE](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v0.1.0-beta/MpolMessenger.exe) · [скачать ZIP с клиентом и сервером](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v0.1.0-beta/MpolMessenger_Full_Project.zip). Сборка Windows прошла в GitHub Actions; запуск на пользовательском ПК ещё не подтверждён. **Публичный сервер не развёрнут.**
 
 # MPOL MESSENGER · 0.1 Beta
 
@@ -13,7 +13,6 @@ Windows-клиент с минималистичной чёрной темой M
 - `server/requirements.txt` — Python-зависимости.
 - `client/` — исходный код интерфейса и Go-лаунчера, `build_windows.bat`.
 - `compose.yaml`, `server/Dockerfile`, `Caddyfile`, `.env.example` — вариант размещения сервера на VPS.
-- `tests/test_integration.py` — интеграционные тесты двух аккаунтов.
 
 ## Быстрый запуск на одном ПК (локальная проверка)
 
@@ -63,12 +62,6 @@ Windows-клиент с минималистичной чёрной темой M
 
 Для сборки нужен Go 1.23+ на Windows. Запустите `client/build_windows.bat`. Обновить иконку из `MpolMessenger.ico` можно через `python client/create_windows_resource.py` перед сборкой. Для разработки на Linux: `cd client && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-H windowsgui" -o ../MpolMessenger.exe .`.
 
-## Запуск тестов
+## Проверка
 
-В окружении с зависимостями из `server/requirements.txt` и `pytest`, `httpx`:
-
-```bash
-python tests/test_integration.py
-```
-
-Проверяет создание аккаунтов, заявки, WebSocket, доставку сообщения, сохранение истории, группы, файлы и права доступа. UI-проверка в Chromium и запуск под Windows не подтверждены. Сервер — учебный бета-проект, перед публичным релизом нужен независимый аудит безопасности.
+В ходе разработки были проведены локальные интеграционные проверки клиента/сервера. Скрипт тестов не включён в текущий GitHub ZIP. Сборка EXE на GitHub Actions прошла успешно; поведение приложения непосредственно на Windows и безопасная публичная эксплуатация требуют отдельной проверки.
