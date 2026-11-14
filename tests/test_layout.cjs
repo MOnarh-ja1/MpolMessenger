@@ -9,7 +9,7 @@ const {chromium}=require('playwright-core');
 
 const dir=path.resolve(__dirname,'../client/ui');
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css',
- '.png':'image/png','.svg':'image/svg+xml'};
+ '.png':'image/png','.svg':'image/svg+xml','.webp':'image/webp'};
 const server=http.createServer((req,res)=>{
  const url=new URL(req.url,'http://localhost');
  const name=url.pathname==='/'?'index.html':decodeURIComponent(url.pathname.slice(1));
@@ -33,6 +33,22 @@ async function main(){
   if(!browser)throw Error('Neither Microsoft Edge nor Chrome is installed');
   const page=await browser.newPage({viewport:{width:1200,height:820}});
   await page.goto('http://127.0.0.1:'+server.address().port+'/');
+  const iconCheck=await page.evaluate(async()=>{
+   const names=['messages','friends','requests','search'];
+   const images=[...document.querySelectorAll('.rail-stack .mpol-nav-icon')];
+   if(images.length!==4)return {ok:false,error:'Expected four sidebar icons, got '+images.length};
+   for(let i=0;i<images.length;i++){
+    const image=images[i];
+    if(!image.src.endsWith('/icons/'+names[i]+'.webp'))return {ok:false,error:'Wrong icon order for '+names[i]};
+    try{await image.decode()}catch{return {ok:false,error:'Missing or invalid WebP image '+names[i]}}
+    if(image.naturalWidth<64||image.naturalHeight<64)return {ok:false,error:'Icon resolution too small '+names[i]};
+   }
+   return {ok:typeof document.getElementById('railSearch').onclick==='function',
+     error:'Search button missing click handler'};
+  });
+  assert.ok(iconCheck.ok,'Supplied icon assets and search routing: '+JSON.stringify(iconCheck));
+  console.log('PASS: all four custom icons decode; search button is wired');
+
   await page.evaluate(()=>{
    document.getElementById('authScreen').classList.add('hidden');
    document.getElementById('mainScreen').classList.remove('hidden');
