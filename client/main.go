@@ -25,7 +25,7 @@ import (
 //go:embed ui/*
 var bundled embed.FS
 
-type config struct{ URL string `json:"url"` }
+type config struct{ URL string `json:"url"`; Version int `json:"version,omitempty"` }
 var cfgMu sync.RWMutex
 var cfg config
 var lastSeenMu sync.Mutex
@@ -38,8 +38,8 @@ func configFile()string{
  return filepath.Join(dir,"MpolMessenger","config.json")
 }
 func readConfig(){
- cfg=config{URL:"http://127.0.0.1:8000"}
- data,err:=os.ReadFile(configFile());if err==nil{var c config;if json.Unmarshal(data,&c)==nil {if validateTarget(c.URL)==nil {cfg=c}}}
+ cfg=config{URL:"https://mpol-messenger-api.onrender.com",Version:1}
+ data,err:=os.ReadFile(configFile());if err==nil{var c config;if json.Unmarshal(data,&c)==nil {if validateTarget(c.URL)==nil && !(c.Version==0 && (c.URL=="http://127.0.0.1:8000"||c.URL=="http://localhost:8000")) {cfg=c}}}
 }
 func validateTarget(raw string)error{
  u,err:=url.Parse(strings.TrimSpace(raw));if err!=nil{return err}
@@ -54,6 +54,7 @@ func saveConfig(w http.ResponseWriter,r *http.Request){
  var in config
  if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,4096)).Decode(&in);err!=nil{http.Error(w,`{"error":"bad json"}`,400);return}
  in.URL=strings.TrimRight(strings.TrimSpace(in.URL),"/")
+ in.Version=1
  if err:=validateTarget(in.URL);err!=nil{w.Header().Set("Content-Type","application/json");w.WriteHeader(400);_ =json.NewEncoder(w).Encode(map[string]string{"error":err.Error()});return}
  data,_:=json.MarshalIndent(in,"","  ")
  path:=configFile();_ =os.MkdirAll(filepath.Dir(path),0700)
