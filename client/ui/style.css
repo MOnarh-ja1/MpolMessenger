@@ -12,3 +12,50 @@
 .profile-id-card{padding:15px;margin:0 0 19px;background:#212124;border:1px solid #404045;border-radius:13px}.profile-id-caption{font-size:10px;color:#a6a6ac;letter-spacing:1px;font-weight:700}.profile-id-row{display:flex;align-items:center;gap:12px;justify-content:space-between;margin-top:10px}.profile-id-row code{font-size:17px;font-family:ui-monospace,Consolas,monospace;letter-spacing:.8px;color:#f6f6f6;overflow-wrap:anywhere}
 .request-item{display:flex;gap:12px;padding:15px 11px;margin:3px 0 8px;border-radius:12px;background:#19191c;border:1px solid #303035}.request-content{min-width:0;flex:1}.request-content strong{font-size:13px}.request-content span{display:block;color:#87878e;font-size:11px;margin-top:4px;word-break:break-all}.request-content p{font-size:11px;color:#a1a1a8;margin:8px 0}.request-buttons{display:flex;gap:7px;flex-wrap:wrap}.request-buttons button{padding:8px 10px;background:#29292d;border:1px solid #424248;border-radius:8px;font-size:11px}.request-buttons button:hover{background:#39393e}.request-buttons [data-accept="1"]{background:#e7e7e9;color:#111;font-weight:700}.request-buttons [data-accept="1"]:hover{background:#fff}
 @media(max-width:1050px){.account-id-card{padding:10px 8px;margin-left:8px;margin-right:8px}.account-id-card button{padding:7px;font-size:10px}.account-id-meta strong{font-size:11px}}
+
+
+/* MPOL BLACK 2.0 — functional conversation controls */
+.chat-filters{display:flex;gap:4px;margin:4px 12px 5px;padding:4px 0;overflow:auto;scrollbar-width:none}
+.chat-filters button{font-size:10px;background:#202023;color:#a4a4ac;padding:8px 10px;border-radius:8px;white-space:nowrap}
+.chat-filters button:hover{background:#29292d;color:#fff}
+.chat-filters button.active{background:#e8e8e9;color:#151515;font-weight:700}
+.avatar-photo{width:100%;height:100%;object-fit:cover;border-radius:inherit}
+.self-avatar{background-size:cover;background-position:center}
+.reaction-strip{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.reaction-strip button{border:1px solid #424248;border-radius:9px;background:#29292d;color:#d3d3db;padding:4px 8px;font-size:12px}
+.reaction-strip button.my-reaction{background:#3b3b3c;border-color:#96969d;color:#fff}
+.reaction-picker{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.reaction-picker button{font-size:25px;background:#252528;border-radius:11px;padding:8px}
+.reaction-picker button:hover{background:#39393d}
+.emoji-palette{position:absolute;z-index:30;right:30px;bottom:105px;width:350px;max-width:calc(100% - 35px);padding:15px;border-radius:16px;background:#19191b;border:1px solid #414146;box-shadow:0 20px 55px #000d}
+.emoji-palette label{color:#a2a2aa;font-size:11px}.emoji-palette input{display:block;width:100%;margin:8px 0;background:#252528;border-radius:9px;color:#fff;border:1px solid #39393d;padding:9px}
+.emoji-grid{display:grid;grid-template-columns:repeat(8,1fr);max-height:215px;overflow:auto;gap:4px}
+.emoji-grid button{background:transparent;border-radius:8px;padding:7px 1px;font-size:22px}.emoji-grid button:hover{background:#343439}
+.opened-chat{position:relative}
+.composer-icon.recording{color:#ffb4ad;font-weight:700;min-width:60px;font-size:13px;animation:voice-pulse 1s infinite alternate}
+@keyframes voice-pulse{from{opacity:.7}to{opacity:1}}
+.voice-preview,.voice-playback{display:block;width:100%;max-width:300px;margin:12px 0;accent-color:#ececef}
+.voice-actions{display:flex;gap:8px}.voice-actions button{flex:1}
+.msg-file.voice-file{background:#2e2e32;border:1px solid #3e3e44;padding:10px 12px;border-radius:10px;text-decoration:none}
+.image-preview{max-width:100%;max-height:65vh;object-fit:contain;border-radius:10px}
+.developer-settings{margin:12px 0;padding:11px;background:#202023;border:1px solid #37373a;border-radius:9px;color:#97979e;font-size:11px}
+.developer-settings summary{cursor:pointer}
+.call-layer{position:fixed;inset:0;z-index:120;background:#030305e8;display:flex;align-items:center;justify-content:center;padding:20px}
+.call-card{background:#131316;border-radius:23px;border:1px solid #36363b;width:min(590px,100%);padding:28px;box-shadow:0 30px 100px #000;text-align:center;color:#f0f0f1}
+.call-tag{font-size:10px;letter-spacing:2px;color:#95959a;font-weight:700}.call-card h2{font-size:24px;margin:14px 0 7px}
+.call-card p{font-size:13px;color:#9a9aa3}.call-video-area{position:relative;margin:14px auto;width:100%;max-width:520px;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#202024}
+.call-video-area #remoteVideo{width:100%;height:100%;object-fit:cover}
+.call-video-area #localVideo{position:absolute;right:12px;bottom:12px;width:28%;height:32%;max-width:155px;object-fit:cover;border:1px solid #888;border-radius:9px;background:#141416}
+.call-layer.audio-only .call-video-area{height:100px;aspect-ratio:auto}
+.call-layer.audio-only .call-video-area:before{content:'◉';font-size:76px;color:#515157;position:absolute;inset:0;text-align:center;line-height:100px}
+.call-layer.audio-only #localVideo,.call-layer.audio-only #remoteVideo{display:none}
+.call-card #callTimer{font-family:ui-monospace,monospace;color:#b5b5bb;margin:10px}
+.call-active-controls,.call-accept-controls{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin:17px 0}
+.call-card button{padding:11px 14px;background:#333337;border:1px solid #4a4a4f;border-radius:10px;font-size:12px}
+.call-card button:hover{background:#414147}
+.call-card #acceptCall{background:#a9cba6;color:#111;font-weight:700}
+.call-card #declineCall,.call-card .danger-btn{background:#6b3235;color:#fff}
+.call-volume-label{display:flex;justify-content:center;align-items:center;gap:10px;color:#999;font-size:11px}
+.call-volume-label input{width:120px;accent-color:#e5e5e8}
+.conv-top-actions{gap:5px}.conv-top-actions button{min-width:34px}
+@media(max-width:870px){.chat-filters{gap:3px;margin-inline:7px}.chat-filters button{font-size:9px;padding:7px 7px}.call-card{padding:15px}}
