@@ -33,7 +33,7 @@
     <div class="action-row"><button id="newMessage" class="soft-action">+ Новый чат</button><button id="createGroup" class="round-action" title="Создать группу">▦</button></div>
     <div id="chatList" class="chat-list"></div>
     <div id="myIdCard" class="account-id-card">
-      <div class="account-id-meta"><span>ВАШ ID ДЛЯ ДРУЗЕЙ</span><strong id="myAccountId">—</strong></div>
+      <div class="account-id-meta"><span>ТЕКУЩИЙ АККАУНТ</span><strong id="activeAccountLabel">—</strong><span class="account-id-code" id="myAccountId">—</span></div>
       <button id="copyMyId" type="button" title="Скопировать ID аккаунта">Скопировать</button>
     </div>
     <div class="left-foot"><span class="status-pip"></span><span>Защищённое соединение при HTTPS</span></div>
@@ -57,10 +57,10 @@
     <div class="call-tag">MPOL · ЗВОНОК</div>
     <h2 id="callTitle">Вызов</h2><p id="callStatus">Соединение…</p>
     <div class="call-video-area"><video id="remoteVideo" autoplay playsinline></video><video id="localVideo" autoplay muted playsinline></video></div>
-    <audio id="remoteAudio" autoplay></audio><div id="callTimer">00:00</div>
+    <audio id="remoteAudio" autoplay></audio><div id="callTimer">00:00</div><p id="callQuality" role="status" aria-live="polite" class="call-quality">Ожидаем подключения…</p>
     <div class="call-accept-controls"><button id="acceptCall">Принять</button><button id="declineCall">Отклонить</button></div>
     <div class="call-active-controls hidden"><button id="muteMic">Микрофон</button><button id="toggleCamera">Камера</button><button id="shareScreen">Экран</button><button id="endCall" class="danger-btn">Завершить</button></div>
-    <div class="call-audio-settings"><label><input id="noiseSuppression" type="checkbox" checked> Шумоподавление + эхоподавление</label>
+    <div class="call-audio-settings"><label><input id="noiseSuppression" type="checkbox" checked> Шумоподавление (если речь обрывается — отключите)</label>
  <button id="enableCallAudio" type="button">🔊 Включить звук</button></div>
  <label class="call-volume-label">Громкость <input id="callVolume" type="range" min="0" max="100" value="100"/></label>
    </div>

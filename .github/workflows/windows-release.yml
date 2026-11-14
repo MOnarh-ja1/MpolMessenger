@@ -38,6 +38,14 @@ jobs:
           node --check client/ui/app.js
           node --check client/ui/voice.js
           node --check client/ui/calls.js
+          node tests/test_client_account_ownership.cjs
+          node tests/test_call_audio.cjs
+
+      - name: Browser layout smoke test (Microsoft Edge / Chrome)
+        shell: pwsh
+        run: |
+          npm install --no-save --no-package-lock playwright-core
+          node tests/test_layout.cjs
 
       - name: Set up Python for server tests
         uses: actions/setup-python@v5
@@ -82,12 +90,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v2.1.0"
+          $tag = "v2.2.0"
           $assets = @("MpolMessenger.exe", "MpolMessenger_Full_Project.zip")
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $tag $assets --title "MPOL Messenger 2.1.0 — Profile, Calls, Deleted Messages and Update Manager" --notes "MPOL 2.1 release: exact server-side developer role allowlist, improved profile, chat avatars, physical deletion of new messages, microphone recovery, noise/echo cancellation, ringtone and Windows updater with hash verification. Existing older EXE cannot silently self-update; download from GitHub Releases. WebRTC STUN-only, TURN not configured. Not E2EE or security audited." --prerelease --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
+            gh release create $tag $assets --title "MPOL Messenger 2.2.0 — Correct Chat Sides, F11 Layout and Improved Voice Playback" --notes "MPOL 2.2 improves per-window account isolation, correct sender ownership (own messages right, others left), visible authors, safe delete controls, responsive F11/windowed layout, stable remote audio stream with reduced video bandwidth and connection diagnostics. Voice calls are STUN-only: no TURN relay yet, so some networks can still fail. Not end-to-end encrypted or security audited." --prerelease --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
           }
           if ($LASTEXITCODE -ne 0) { throw "GitHub release upload failed" }
