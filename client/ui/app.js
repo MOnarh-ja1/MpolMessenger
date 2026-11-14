@@ -1,16 +1,45 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, x => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
-// Each EXE window must have its OWN login. localStorage shared a bearer token
-// across all Edge/Chrome app windows and silently mixed account identities.
-const legacyToken=localStorage.getItem('mpol_token');
-if(!sessionStorage.getItem('mpol_token')&&legacyToken){
- sessionStorage.setItem('mpol_token',legacyToken);
+// Remember browser/PWA sign-in after closing Safari or a browser tab.
+// Desktop ?mpol_client= clients deliberately retain a separate per-window
+// session to avoid silently switching between accounts in different EXE windows.
+// Never store a password or refresh token in localStorage.
+const MPOL_TOKEN_KEY='mpol_token';
+const MPOL_REMEMBER_KEY='mpol_remember_login';
+const isDesktopClient=/^\d+\.\d+\.\d+$/.test(new URLSearchParams(location.search).get('mpol_client')||'');
+let rememberLogin=!isDesktopClient&&localStorage.getItem(MPOL_REMEMBER_KEY)!=='0';
+function selectedTokenStorage(){return isDesktopClient||!rememberLogin?sessionStorage:localStorage}
+function unselectedTokenStorage(){return selectedTokenStorage()===localStorage?sessionStorage:localStorage}
+function migratePreviousToken(){
+ const preferred=selectedTokenStorage(),other=unselectedTokenStorage();
+ // Migrate sessions created by old MPOL versions without deleting a valid login.
+ if(!preferred.getItem(MPOL_TOKEN_KEY)){
+  const previous=other.getItem(MPOL_TOKEN_KEY);
+  if(previous)preferred.setItem(MPOL_TOKEN_KEY,previous);
+ }
+ other.removeItem(MPOL_TOKEN_KEY);
 }
-localStorage.removeItem('mpol_token');
-const storage = {
- get token(){return sessionStorage.getItem('mpol_token')||''},
- set token(v){if(v)sessionStorage.setItem('mpol_token',v);else sessionStorage.removeItem('mpol_token')}
+migratePreviousToken();
+const storage={
+ get token(){return selectedTokenStorage().getItem(MPOL_TOKEN_KEY)||''},
+ set token(value){
+  if(!value){
+   localStorage.removeItem(MPOL_TOKEN_KEY);
+   sessionStorage.removeItem(MPOL_TOKEN_KEY);
+   return;
+  }
+  selectedTokenStorage().setItem(MPOL_TOKEN_KEY,value);
+  unselectedTokenStorage().removeItem(MPOL_TOKEN_KEY);
+ },
+ setRemember(value){
+  if(isDesktopClient)return;
+  const activeToken=storage.token;
+  rememberLogin=!!value;
+  localStorage.setItem(MPOL_REMEMBER_KEY,rememberLogin?'1':'0');
+  if(activeToken)storage.token=activeToken;
+  else migratePreviousToken();
+ }
 };
 const state = {me:null,chats:[],friends:[],requests:[],requestsLoaded:false,messages:[],active:null,tab:'chats',chatFilter:'all',ws:null,retry:0,reply:null,register:false,typingTimer:0,
   notif:localStorage.getItem('mpol_notify')==='1',sound:localStorage.getItem('mpol_sound')!=='0',scale:Number(localStorage.getItem('mpol_scale')||'100')};
@@ -20,8 +49,12 @@ async function api(path,{method='GET',body,form=false}={}){
  const opt={method,headers:{}};if(storage.token)opt.headers.Authorization='Bearer '+storage.token;
  if(body!==undefined){if(form)opt.body=body;else{opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}}
  const res=await fetch('/api'+path,opt);let data;try{data=await res.json()}catch{data=null}
- if(!res.ok){if(res.status===401 && state.me){signout(false);throw Error('Сессия истекла. Войдите снова.')}
- throw Error(typeof data?.detail==='string'?data.detail:'Ошибка сервера ('+res.status+')')}
+ if(!res.ok){
+  const err=new Error(typeof data?.detail==='string'?data.detail:'Ошибка сервера ('+res.status+')');
+  err.status=res.status;
+  if(res.status===401 && state.me)signout(false);
+  throw err;
+ }
  return data;
 }
 function timestr(v){if(!v)return '';const d=new Date(v);return d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}
@@ -35,11 +68,51 @@ function updateOwnAvatar(){
  if(state.me.avatar==='📷'){btn.textContent='';btn.style.backgroundImage='url(/api/avatars/'+encodeURIComponent(state.me.id)+'?t='+Date.now()+')'}
  else{btn.textContent=state.me.nick.slice(0,1).toUpperCase();btn.style.backgroundImage=''}
 }
-function showLogin(){document.getElementById('mainScreen')?.classList.remove('mobile-chat-open');state.me=null;$('authScreen').classList.remove('hidden');$('mainScreen').classList.add('hidden');$('password').value='';serverHealth()}
+function showLogin(){
+ document.getElementById('mainScreen')?.classList.remove('mobile-chat-open');
+ state.me=null;
+ $('authScreen').classList.remove('hidden');
+ $('mainScreen').classList.add('hidden');
+ $('password').value='';
+ $('authForm').classList.remove('hidden');
+ $('forgotPassword').classList.remove('hidden');
+ $('toggleAuth').classList.remove('hidden');
+ $('sessionRestore').classList.add('hidden');
+ $('rememberLoginRow').classList.toggle('hidden',isDesktopClient);
+ $('rememberLogin').checked=rememberLogin;
+ serverHealth();
+}
+function showSessionRestore(message){
+ showLogin();
+ $('authForm').classList.add('hidden');
+ $('forgotPassword').classList.add('hidden');
+ $('toggleAuth').classList.add('hidden');
+ $('sessionRestore').classList.remove('hidden');
+ $('sessionRestoreMessage').textContent=message;
+}
 function showApp(){ $('authScreen').classList.add('hidden');$('mainScreen').classList.remove('hidden');}
 // No window-level globals exposed: every on-screen action binds a real handler.
 async function serverHealth(){try{const r=await api('/health');$('serverStatus').textContent=r.ok?(r.temporary_storage?'Тестовый онлайн · данные могут исчезнуть':r.durable_database?'Онлайн · сообщения сохраняются':'Сервер доступен'):'Сервер не отвечает';$('serverStatus').previousElementSibling.classList.toggle('good',!!r.ok)}catch{$('serverStatus').textContent='Сервер недоступен';$('serverStatus').previousElementSibling.classList.remove('good')}}
-async function startup(){try{if(storage.token){state.me=await api('/me');showMain();return}}catch{storage.token=''}showLogin()}
+let restoringLogin=false;
+async function startup(){
+ if(restoringLogin)return;
+ if(!storage.token){showLogin();return}
+ restoringLogin=true;
+ showSessionRestore('Восстанавливаем вход в аккаунт…');
+ try{
+  // The /me endpoint validates the saved session against the server.
+  await showMain();
+ }catch(err){
+  if(err?.status===401 || !storage.token){
+   storage.token='';
+   showLogin();
+   $('authError').textContent='Сессия истекла или вы вышли из аккаунта. Войдите снова.';
+  }else{
+   // Offline, 502/503 and sleeping Render MUST NOT destroy a valid session.
+   showSessionRestore('Сервер временно недоступен. Ваш вход сохранён; можно повторить подключение.');
+  }
+ }finally{restoringLogin=false}
+}
 async function showMain(){
  // The /me response is authoritative; never infer account identity from a
  // developer badge, previous window, nickname, or another shared login.
@@ -303,6 +376,9 @@ async function configServer(){if(location.protocol==='https:' && !['localhost','
 async function signout(send){if(send)api('/auth/logout',{method:'POST'}).catch(()=>{});if(typeof currentCall!=='undefined'&&currentCall)endCall(true);storage.token='';state.me=null;state.active=null;state.requests=[];state.requestsLoaded=false;state.ws?.close();state.ws=null;closeModal();showLogin()}
 function openSearch(){findFriends()}
 $('toggleAuth').onclick=()=>{state.register=!state.register;$('registerFields').classList.toggle('hidden',!state.register);$('confirmFields').classList.toggle('hidden',!state.register);$('authSubtitle').textContent=state.register?'Создайте аккаунт и найдите друзей.':'Добро пожаловать. Войдите в свой аккаунт.';$('authSubmit').firstChild.textContent=state.register?'Зарегистрироваться ':'Войти ';$('toggleAuth').innerHTML=state.register?'Уже есть аккаунт? <b>Войти</b>':'Нет аккаунта? <b>Создать аккаунт</b>';$('password').setAttribute('autocomplete',state.register?'new-password':'current-password')};
+$('rememberLogin').onchange=e=>storage.setRemember(e.target.checked);
+$('retrySession').onclick=()=>startup();
+$('switchAccount').onclick=()=>{storage.token='';showLogin();$('authError').textContent='Выберите аккаунт для входа.'};
 $('authForm').onsubmit=async e=>{e.preventDefault();$('authError').textContent='';$('authSubmit').disabled=true;try{const login=$('login').value.trim(),password=$('password').value;if(state.register&&password!==$('password2').value)throw Error('Пароли не совпадают');const body=state.register?{nick:$('nick').value,login,password,email:$('email').value||null}:{login,password};const data=await api(state.register?'/auth/register':'/auth/login',{method:'POST',body});storage.token=data.token;state.me=data.user;await showMain()}catch(e){$('authError').textContent=errorText(e)}finally{$('authSubmit').disabled=false}};
 $('configureServer').onclick=configServer;$('forgotPassword').onclick=forgotPassword;$('newMessage').onclick=()=>{if(state.tab==='notifications')refreshAll();else if(state.tab==='settings')openSettings();else if(state.tab==='groups')createGroup();else findFriends()};$('createGroup').onclick=createGroup;
 
@@ -324,6 +400,9 @@ window.addEventListener('online',resumeOnlineConnection);
 window.addEventListener('pageshow',resumeOnlineConnection);
 window.addEventListener('focus',()=>{if(state.me){refreshRequests();resumeOnlineConnection()}});
 window.addEventListener('offline',()=>{if(state.me)setConnectionStatus(false)});
+window.addEventListener('online',()=>{if(storage.token&&!state.me)startup()});
+window.addEventListener('pageshow',()=>{if(storage.token&&!state.me)startup()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&storage.token&&!state.me)startup()});
 
 async function checkRequiredExeUpdate(){
  const params=new URLSearchParams(location.search);
