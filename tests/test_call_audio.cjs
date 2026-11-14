@@ -58,3 +58,23 @@ pc.ontrack({track:{id:'in-video',kind:'video'},streams:[]});
 assert.equal(audio.srcAssignments,1);
 assert.equal(video.srcAssignments,1);
 console.log('PASS: call audio stream stays stable during video track events; video muted; optional noise gate');
+
+(async()=>{
+ // Browser requests short-lived ICE credentials from the API before negotiating.
+ ctx.api=async()=>({iceServers:[
+  {urls:['stun:stun.l.google.com:19302']},
+  {urls:['turn:relay.example.test:3478'],username:'test-user',credential:'short-lived'}
+ ],relayConfigured:true});
+ const accepted=await vm.runInContext('loadCallIce(currentCall)',ctx);
+ assert.equal(accepted,true);
+ assert.equal(vm.runInContext('currentCall.relayConfigured',ctx),true);
+ const peer=vm.runInContext('createPeer()',ctx);
+ assert.equal(peer.iceServers.length,2,'Configured TURN should reach RTCPeerConnection');
+ assert.equal(peer.iceServers[1].credential,'short-lived');
+ ctx.api=async()=>{throw Error('network offline')};
+ await vm.runInContext('loadCallIce(currentCall)',ctx);
+ assert.equal(vm.runInContext('currentCall.relayConfigured',ctx),false);
+ assert.equal(vm.runInContext('currentCall.iceServers.length',ctx),1);
+ console.log('PASS: TURN credentials loaded with authenticated ICE fallback');
+})().catch(e=>{console.error(e);process.exitCode=1});
+
