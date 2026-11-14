@@ -96,7 +96,7 @@ async function toggleChatArchive(){
 function updateFilters(){
  document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('active',b.dataset.filter===state.chatFilter))
 }
-function renderTab(tab){$('mainScreen').classList.remove('mobile-chat-open');if(tab==='saved'){openSavedChat();return}state.tab=tab;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));
+function renderTab(tab){if(typeof closeEmojiPalette==='function')closeEmojiPalette();$('mainScreen').classList.remove('mobile-chat-open');if(tab==='saved'){openSavedChat();return}state.tab=tab;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));
  $('listTitle').textContent=({chats:'Сообщения',friends:'Друзья',groups:'Группы',notifications:'Заявки в друзья',settings:'Настройки'})[tab]||'Сообщения';
  $('chatFilters').classList.toggle('hidden',tab!=='chats');
  $('listSubtitle').textContent=({chats:'На связи с теми, кто важен',friends:'Ваш круг общения',groups:'Командные беседы',notifications:'Новые знакомства',settings:'Персональные параметры'})[tab];
@@ -131,7 +131,7 @@ function renderList(){let filter=$('listSearch').value.trim().toLowerCase();cons
  });if(!a.length)root.innerHTML='<div class="list-blank"><strong>Диалогов пока нет</strong>Создайте чат или найдите друзей.</div>';
  for(const c of a){const el=document.createElement('button');el.className='chat-item'+(state.active?.id===c.id?' selected':'');el.innerHTML=avatar(c.avatar,c.online,c.peer_id)+`<div class="chat-item-body"><div class="chat-item-head"><strong>${esc(c.name)}</strong><time>${datestr(c.last?.sent_at)}</time></div><div class="chat-item-preview">${esc(c.last?.deleted?'Сообщение удалено':c.last?.body|| (c.last?.attachment?'📎 '+c.last.attachment.name:'Новая переписка'))}</div></div>${c.unread?`<span class="count-badge">${c.unread}</span>`:''}`;el.onclick=()=>selectChat(c.id);root.append(el)}
 }
-async function selectChat(id){try{const c=state.chats.find(x=>x.id===id);if(!c)throw Error('Чат не найден');state.active=c;state.reply=null;replyUpdate();$('mainScreen').classList.add('mobile-chat-open');$('emptyChat').classList.add('hidden');$('openedChat').classList.remove('hidden');updateHeader();state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages();await api('/chats/'+encodeURIComponent(id)+'/read',{method:'POST'});state.active.unread=0;renderList();if(window.matchMedia('(min-width:601px)').matches)$('messageInput').focus()}catch(e){toast(errorText(e))}}
+async function selectChat(id){try{if(typeof closeEmojiPalette==='function')closeEmojiPalette();const c=state.chats.find(x=>x.id===id);if(!c)throw Error('Чат не найден');state.active=c;state.reply=null;replyUpdate();$('mainScreen').classList.add('mobile-chat-open');$('emptyChat').classList.add('hidden');$('openedChat').classList.remove('hidden');updateHeader();state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages();await api('/chats/'+encodeURIComponent(id)+'/read',{method:'POST'});state.active.unread=0;renderList();if(window.matchMedia('(min-width:601px)').matches)$('messageInput').focus()}catch(e){toast(errorText(e))}}
 function updateHeader(){if(!state.active)return;const c=state.active;
  $('chatAvatar').innerHTML=(c.avatar==='📷'&&c.peer_id)?'<img class="avatar-photo" src="/api/avatars/'+encodeURIComponent(c.peer_id)+'" alt="">':esc(c.avatar);
  $('chatName').textContent=c.name;$('chatPresence').textContent=c.is_saved?'Только вы':c.is_group?c.members.length+' участников':c.online?'● В сети':'Не в сети';
@@ -188,14 +188,15 @@ function replyUpdate(){$('replyChip').classList.toggle('hidden',!state.reply);if
 async function loadMessages(){if(!state.active)return;const id=state.active.id;state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages()}
 let sending=false;
 async function send(){const c=state.active;if(!c||sending)return;const body=$('messageInput').value.trim();if(!body)return;sending=true;$('sendBtn').disabled=true;
- try{await api('/chats/'+encodeURIComponent(c.id)+'/messages',{method:'POST',body:{body,reply_to:state.reply}});$('messageInput').value='';state.reply=null;replyUpdate();await loadMessages();await refreshAll()}catch(e){toast(errorText(e))}finally{sending=false;$('sendBtn').disabled=false}}
+ try{await api('/chats/'+encodeURIComponent(c.id)+'/messages',{method:'POST',body:{body,reply_to:state.reply}});if(typeof closeEmojiPalette==='function')closeEmojiPalette();$('messageInput').value='';state.reply=null;replyUpdate();await loadMessages();await refreshAll()}catch(e){toast(errorText(e))}finally{sending=false;$('sendBtn').disabled=false}}
 async function attach(){if(!state.active)return;$('fileInput').click()}
 async function uploadFile(file){if(!file||!state.active)return;if(file.size>12*1024*1024){toast('Максимальный размер файла — 12 МБ');return false}const data=new FormData();data.append('file',file);try{toast('Загрузка файла…');const a=await api('/chats/'+encodeURIComponent(state.active.id)+'/attachments',{method:'POST',body:data,form:true});await api('/chats/'+encodeURIComponent(state.active.id)+'/messages',{method:'POST',body:{body:'',attachment_id:a.id}});await loadMessages();await refreshAll();toast('Файл отправлен');$('fileInput').value='';return true}catch(e){toast(errorText(e));return false}}
-function wsConnect(){if(!storage.token||!state.me)return;try{const proto=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(proto+'//'+location.host+'/ws');state.ws=ws;
+function wsConnect(){if(!storage.token||!state.me)return;const existing=state.ws;if(existing&&(existing.readyState===WebSocket.OPEN||existing.readyState===WebSocket.CONNECTING))return;try{const proto=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(proto+'//'+location.host+'/ws');state.ws=ws;
  ws.onopen=()=>{state.retry=0;ws.send(JSON.stringify({type:'auth',token:storage.token}))};
  ws.onmessage=async e=>{if(state.ws!==ws||!state.me)return;let m;try{m=JSON.parse(e.data)}catch{return}
   if(m.type==='call_signal'){onCallSignal(m);return}
-  if(m.type==='authenticated'||m.type==='friend_request'){refreshAll().catch(()=>{});return}
+  if(m.type==='authenticated'){refreshAll().catch(()=>{});if(state.active)loadMessages().catch(()=>{});setConnectionStatus(true);return}
+  if(m.type==='friend_request'){refreshAll().catch(()=>{});return}
   if(m.type==='message'){if(m.message.user_id!==state.me.id){notifyNewMessage(m.message)}if(state.active?.id===m.message.chat_id){if(!state.messages.some(x=>x.id===m.message.id)){state.messages.push(m.message);renderMessages()}api('/chats/'+state.active.id+'/read',{method:'POST'}).catch(()=>{})}refreshAll().catch(()=>{})}
   if(m.type==='message_deleted'){
    if(state.active?.id===m.chat_id){state.messages=state.messages.filter(x=>x.id!==m.message_id);renderMessages()}
@@ -205,9 +206,24 @@ function wsConnect(){if(!storage.token||!state.me)return;try{const proto=locatio
   if(m.type==='chats_changed'||m.type==='friends_changed'||m.type==='presence'||m.type==='profile'||m.type==='read')refreshAll().catch(()=>{});
   if(m.type==='typing'&&state.active?.id===m.chat_id){$('typingIndicator').textContent='Собеседник печатает…';clearTimeout(state.typingTimer);state.typingTimer=setTimeout(()=>$('typingIndicator').textContent='',1300)}
  };
- ws.onclose=()=>{if(state.ws===ws&&state.me){const delay=Math.min(30000,1000*Math.pow(2,Math.min(5,state.retry++)));setTimeout(()=>{if(state.me)wsConnect()},delay)}};
+ ws.onclose=()=>{if(state.ws===ws&&state.me){
+   setConnectionStatus(false);
+   if(typeof currentCall!=='undefined'&&currentCall&&!currentCall.started)endCall(false);
+   const delay=Math.min(30000,1000*Math.pow(2,Math.min(5,state.retry++)));
+   setTimeout(()=>{if(state.me&&state.ws===ws)wsConnect()},delay);
+  }};
  ws.onerror=()=>{};
  }catch(e){toast('Не удалось подключить онлайн-канал')}}
+function setConnectionStatus(connected){
+ const el=document.querySelector('.left-foot span:last-child');
+ if(el)el.textContent=connected?'Онлайн · сообщения между разными сетями':'Переподключаемся к серверу…';
+}
+function resumeOnlineConnection(){
+ if(!state.me)return;
+ if(!state.ws||state.ws.readyState>=WebSocket.CLOSING)wsConnect();
+ refreshAll().catch(()=>{});
+ if(state.active)loadMessages().catch(()=>{});
+}
 function notifyNewMessage(m){if(state.sound){try{const a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.type='sine';o.frequency.value=540;g.gain.value=.03;o.connect(g);g.connect(a.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.15);o.stop(a.currentTime+.15)}catch{}}
  if(state.notif&&'Notification'in window&&Notification.permission==='granted'&&document.hidden){try{const n=new Notification('MPOL · '+m.nick,{body:m.body||'📎 Вложение',tag:'mpol-'+m.chat_id});n.onclick=()=>{window.focus();selectChat(m.chat_id);n.close()}}catch{}}}
 function modal(title,content){$('modalTitle').textContent=title;$('modalContent').innerHTML=content;$('modalLayer').classList.remove('hidden')}
@@ -305,8 +321,11 @@ $('closeModal').onclick=closeModal;$('modalBackdrop').onclick=closeModal;documen
 setInterval(()=>{if(state.ws?.readyState===WebSocket.OPEN)state.ws.send(JSON.stringify({type:'ping'}));if(location.hostname==='127.0.0.1'||location.hostname==='localhost')fetch('/__ping').catch(()=>{})},15000);
 setInterval(()=>{if(!state.me)serverHealth()},10000);
 setInterval(()=>{if(state.me)refreshRequests()},12000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.me)refreshAll()});
-window.addEventListener('focus',()=>{if(state.me)refreshRequests()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)resumeOnlineConnection()});
+window.addEventListener('online',resumeOnlineConnection);
+window.addEventListener('pageshow',resumeOnlineConnection);
+window.addEventListener('focus',()=>{if(state.me){refreshRequests();resumeOnlineConnection()}});
+window.addEventListener('offline',()=>{if(state.me)setConnectionStatus(false)});
 
 async function checkRequiredExeUpdate(){
  const params=new URLSearchParams(location.search);
@@ -336,6 +355,19 @@ async function checkRequiredExeUpdate(){
  '<small>Старые EXE не могут самостоятельно запускать скачанные программы. Автоматическая проверка и установка с подтверждением предусмотрены в новых версиях.</small></div>';
  document.body.append(layer);
 }
+// On this app, touch gestures should operate controls rather than scale/select the UI.
+// Editable inputs and textareas are excluded so typing and cursor movement still work.
+// Browser/OS accessibility zoom cannot be overridden by a website.
+for(const kind of ['gesturestart','gesturechange']){
+ document.addEventListener(kind,e=>e.preventDefault(),{passive:false});
+}
+document.addEventListener('wheel',e=>{if(e.ctrlKey)e.preventDefault()},{passive:false});
+document.addEventListener('keydown',e=>{
+ if((e.ctrlKey||e.metaKey)&&['+','-','=','0'].includes(e.key))e.preventDefault();
+});
+document.addEventListener('selectstart',e=>{
+ if(!e.target.closest('input,textarea,[contenteditable="true"]'))e.preventDefault();
+});
 // Compact iPhone chat navigation: return to lists without losing messages.
 // Safari shrinks visualViewport for the keyboard, but not always CSS 100dvh.
 // Only override height while an input is focused AND the keyboard is visible;
