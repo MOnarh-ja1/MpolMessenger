@@ -63,6 +63,7 @@ func saveConfig(w http.ResponseWriter,r *http.Request){
  w.Header().Set("Content-Type","application/json");_ =json.NewEncoder(w).Encode(map[string]bool{"ok":true})
 }
 func proxy(w http.ResponseWriter,r *http.Request){
+ touch()
  cfgMu.RLock();endpoint:=cfg.URL;cfgMu.RUnlock()
  target,err:=url.Parse(endpoint);if err!=nil{http.Error(w,"server configuration error",502);return}
  p:=httputil.NewSingleHostReverseProxy(target)
@@ -77,7 +78,8 @@ func proxy(w http.ResponseWriter,r *http.Request){
  p.ServeHTTP(w,r)
 }
 func openApp(addr string)error{
- appUrl:="http://"+addr+"/"
+ appUrl:=addr
+ if !strings.HasPrefix(addr,"https://") && !strings.HasPrefix(addr,"http://"){appUrl="http://"+addr+"/"}
  if runtime.GOOS=="windows"{
   paths:=[]string{}
   for _,base:=range []string{os.Getenv("ProgramFiles(x86)"),os.Getenv("ProgramFiles"),os.Getenv("LOCALAPPDATA")} {
@@ -95,6 +97,12 @@ func openApp(addr string)error{
 }
 func main(){
  readConfig()
+ // An online server is already a secure origin. Open it directly, avoiding
+ // the old localhost proxy and stale launcher instances from previous releases.
+ cfgMu.RLock();remote:=cfg.URL;cfgMu.RUnlock()
+ if strings.HasPrefix(remote,"https://"){
+  if err:=openApp(remote);err==nil{return}
+ }
  site,err:=fs.Sub(bundled,"ui");if err!=nil{log.Fatal(err)}
  fileServer:=http.FileServer(http.FS(site))
  mux:=http.NewServeMux()
