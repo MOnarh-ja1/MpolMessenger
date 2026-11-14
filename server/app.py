@@ -25,7 +25,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, LargeBinary, UniqueConstraint, create_engine, select, delete, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, LargeBinary, UniqueConstraint, create_engine, select, delete, update, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
 
 ROOT = Path(__file__).parent
@@ -211,8 +211,19 @@ def authed(authorization: str | None = Header(default=None), d: Session = Depend
     if not user: raise HTTPException(401,'Пользователь не найден')
     return user
 
+def is_developer(u: User) -> bool:
+    # Exact, server-controlled allowlist. Never trust a role or ID sent by the client.
+    allowed={x.strip().upper() for x in os.getenv('MPOL_DEVELOPER_IDS','').split(',') if x.strip()}
+    return u.id.upper() in allowed
+
+def developer_only(u:User=Depends(authed)) -> User:
+    if not is_developer(u):raise HTTPException(403,'Нет прав разработчика')
+    return u
+
 def private_user_json(u: User):
-    return {**user_json(u), "email":u.email,"email_verified":u.email_verified}
+    return {**user_json(u),"email":u.email,"email_verified":u.email_verified,
+            "is_developer":is_developer(u)}
+
 
 def user_json(u: User):
     return {'id':u.id,'nick':u.nick,'avatar':u.avatar,'description':u.description,
@@ -253,7 +264,7 @@ def members_of(d: Session, cid: str):
 @app.get('/api/health')
 def health():
     is_temp = SQLITE and os.getenv('MPOL_EPHEMERAL_STORAGE') == '1'
-    return {'ok':True,'version':'2.0.0-preview','temporary_storage':is_temp,'durable_database':not SQLITE}
+    return {'ok':True,'version':'2.1.0','temporary_storage':is_temp,'durable_database':not SQLITE}
 
 @app.post('/api/auth/register')
 def register(body: Register, request: Request, d:Session=Depends(db)):
@@ -290,6 +301,21 @@ def logout(authorization:str|None=Header(None),u:User=Depends(authed),d:Session=
 
 @app.get('/api/me')
 def me(u:User=Depends(authed)): return private_user_json(u)
+
+@app.get('/api/windows-update')
+def windows_update():
+    # A checksum is mandatory for EXE auto-update, populated after release.
+    digest=os.getenv('MPOL_WINDOWS_EXE_SHA256','').strip().lower()
+    if digest and not re.fullmatch(r'[0-9a-f]{64}',digest):digest=''
+    return {'version':'2.1.0','required':True,
+      'download_url':'https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.1.0/MpolMessenger.exe',
+      'sha256':digest}
+
+@app.get('/api/developer/status')
+def developer_status(u:User=Depends(developer_only)):
+    # Deliberately no access to unrelated users' private records.
+    return {'ok':True,'mode':'developer','id':u.id,'version':'2.1.0'}
+
 
 @app.patch('/api/me')
 async def update_me(body:ProfileEdit,u:User=Depends(authed),d:Session=Depends(db)):
@@ -558,7 +584,7 @@ def chats(u:User=Depends(authed),d:Session=Depends(db)):
     result=[]
     for m in memberships:
         c=d.get(Chat,m.chat_id)
-        ms=d.scalar(select(Message).where(Message.chat_id==c.id).order_by(Message.sent_at.desc()).limit(1))
+        ms=d.scalar(select(Message).where(Message.chat_id==c.id,Message.deleted==False).order_by(Message.sent_at.desc()).limit(1))
         users=list(d.scalars(select(Member.user_id).where(Member.chat_id==c.id)).all())
         peer = d.get(User,next((v for v in users if v!=u.id),u.id)) if not c.is_group else None
         unread=d.scalar(select(func.count(Message.id)).where(Message.chat_id==c.id,Message.user_id!=u.id,Message.sent_at>m.read_at)) or 0
@@ -574,7 +600,7 @@ def chats(u:User=Depends(authed),d:Session=Depends(db)):
 @app.get('/api/chats/{chat_id}/messages')
 def messages(chat_id:str,before:str|None=None,search:str|None=None,u:User=Depends(authed),d:Session=Depends(db)):
     get_member(d,chat_id,u.id)
-    q=select(Message).where(Message.chat_id==chat_id)
+    q=select(Message).where(Message.chat_id==chat_id,Message.deleted==False)
     if before:
         try: at=datetime.fromisoformat(before.replace('Z','+00:00')).replace(tzinfo=None)
         except ValueError:raise HTTPException(400,'Неверная дата')
@@ -621,9 +647,25 @@ async def delete_message(message_id:str,u:User=Depends(authed),d:Session=Depends
     if not m:raise HTTPException(404,'Сообщение не найдено')
     get_member(d,m.chat_id,u.id)
     if m.user_id!=u.id:raise HTTPException(403,'Можно удалять только свои сообщения')
-    m.body='';m.deleted=True;m.attachment_id=None;d.commit()
-    await emit(members_of(d,m.chat_id),{'type':'message_updated','message':msg_json(d,m)})
-    return {'ok':True}
+    chat_id=m.chat_id
+    attachment_id=m.attachment_id
+    # References must be cleared before physical deletion (PostgreSQL FK).
+    d.execute(update(Message).where(Message.reply_to==message_id).values(reply_to=None))
+    d.execute(delete(MessageReaction).where(MessageReaction.message_id==message_id))
+    d.delete(m)
+    d.flush()
+    if attachment_id and not d.scalar(select(Message.id).where(Message.attachment_id==attachment_id).limit(1)):
+        att=d.get(Attachment,attachment_id)
+        if att:
+            blob=d.get(AttachmentBlob,attachment_id)
+            if blob:d.delete(blob);d.flush()
+            if SQLITE and att.file_path:
+                try:Path(att.file_path).unlink(missing_ok=True)
+                except OSError:pass
+            d.delete(att)
+    d.commit()
+    await emit(members_of(d,chat_id),{'type':'message_deleted','message_id':message_id,'chat_id':chat_id})
+    return {'ok':True,'deleted':True}
 
 @app.post('/api/chats/{chat_id}/read')
 async def read_chat(chat_id:str,u:User=Depends(authed),d:Session=Depends(db)):

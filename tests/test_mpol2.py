@@ -26,6 +26,16 @@ def run():
             a,at,ah=register('mpol_two_alice')
             b,bt,bh=register('mpol_two_bob')
             assert client.get('/api/health').json()['ok']
+            # Developer entitlement is controlled exclusively by an exact server allowlist.
+            os.environ['MPOL_DEVELOPER_IDS']=a
+            assert client.get('/api/me',headers=ah).json()['is_developer'] is True
+            assert client.get('/api/me',headers=bh).json()['is_developer'] is False
+            assert client.get('/api/developer/status',headers=ah).status_code==200
+            assert client.get('/api/developer/status',headers=bh).status_code==403
+            os.environ.pop('MPOL_DEVELOPER_IDS',None)
+            manifest=client.get('/api/windows-update')
+            assert manifest.status_code==200
+            assert manifest.json()['version']=='2.1.0'
             saved=client.post('/api/me/saved',headers=ah)
             assert saved.status_code==200,saved.text
             saved_id=saved.json()['id']
@@ -54,6 +64,20 @@ def run():
             assert reaction.json()['reactions'][0]['users']==[b]
             assert client.put('/api/messages/'+msg_id+'/reaction',headers=bh,json={'emoji':'🔥'}).json()['reactions']==[]
             assert client.put('/api/messages/'+msg_id+'/reaction',headers=bh,json={'emoji':'???'}).status_code==400
+            # Physical deletion must remove the message instead of returning a placeholder.
+            reply=client.post('/api/chats/'+chat_id+'/messages',headers=bh,
+                json={'body':'Reply to original','reply_to':msg_id})
+            assert reply.status_code==200,reply.text
+            reply_id=reply.json()['id']
+            assert client.delete('/api/messages/'+msg_id,headers=bh).status_code==403
+            deleted=client.delete('/api/messages/'+msg_id,headers=ah)
+            assert deleted.status_code==200,deleted.text
+            assert deleted.json()['deleted'] is True
+            arr=client.get('/api/chats/'+chat_id+'/messages',headers=ah).json()
+            assert not any(x['id']==msg_id for x in arr),arr
+            assert not any(x.get('deleted') for x in arr),arr
+            assert next(x for x in arr if x['id']==reply_id)['reply_to'] is None
+            assert client.delete('/api/messages/'+msg_id,headers=ah).status_code==404
 
             assert client.put('/api/chats/'+chat_id+'/archive',headers=ah,json={'archived':True}).status_code==200
             archived=next(x for x in client.get('/api/chats',headers=ah).json() if x['id']==chat_id)
@@ -99,7 +123,7 @@ def run():
                         'call_id':callid})
                     reply=origin.receive_json()
                     assert reply['type']=='call_signal' and reply['kind']=='decline'
-            print('PASS: saved, archive, reactions, photo, audio, authorized two-user signaling')
+            print('PASS: developer RBAC, physical deletion, saved, archive, reactions, avatars, audio, two-user WebRTC signaling')
         engine.dispose()
 
 if __name__=='__main__':

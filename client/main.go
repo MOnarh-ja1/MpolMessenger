@@ -5,9 +5,12 @@ package main
 import (
  "embed"
  "encoding/json"
+ "crypto/sha256"
+ "encoding/hex"
  "errors"
  "fmt"
  "io/fs"
+ "io"
  "log"
  "net"
  "net/http"
@@ -17,6 +20,10 @@ import (
  "os/exec"
  "path/filepath"
  "runtime"
+ "regexp"
+ "strconv"
+ "syscall"
+ "unsafe"
  "strings"
  "sync"
  "time"
@@ -95,12 +102,80 @@ func openApp(addr string)error{
  for _,cmd:=range []string{"xdg-open","open"}{if path,err:=exec.LookPath(cmd);err==nil{return exec.Command(path,appUrl).Start()}}
  return errors.New("browser not found")
 }
+const clientVersion = "2.1.0"
+
+type updateManifest struct {
+ Version string `json:"version"`
+ Required bool `json:"required"`
+ DownloadURL string `json:"download_url"`
+ SHA256 string `json:"sha256"`
+}
+func newerVersion(v, current string) bool {
+ parse:=func(s string)[3]int{
+  var parts [3]int
+  for i,p:=range strings.Split(s,"."){if i>=3{break};parts[i],_=strconv.Atoi(p)}
+  return parts
+ }
+ a,b:=parse(v),parse(current)
+ for i:=0;i<3;i++{if a[i]!=b[i]{return a[i]>b[i]}}
+ return false
+}
+func confirmWindowsUpdate(version string) bool {
+ title,_:=syscall.UTF16PtrFromString("Mpol Messenger: обновление")
+ message,_:=syscall.UTF16PtrFromString("Вышла новая версия MPOL "+version+
+  ".\\nСкачать EXE с GitHub, проверить SHA-256 и запустить его?\\nАккаунты сохраняются.")
+ proc:=syscall.NewLazyDLL("user32.dll").NewProc("MessageBoxW")
+ answer,_,_:=proc.Call(0,uintptr(unsafe.Pointer(message)),uintptr(unsafe.Pointer(title)),0x34)
+ return answer==6
+}
+func checkWindowsUpdate(base string) bool {
+ client:=&http.Client{Timeout:10*time.Second}
+ response,err:=client.Get(strings.TrimRight(base,"/")+"/api/windows-update")
+ if err!=nil{return false}
+ defer response.Body.Close()
+ if response.StatusCode!=200{return false}
+ var m updateManifest
+ if json.NewDecoder(io.LimitReader(response.Body,4096)).Decode(&m)!=nil{return false}
+ if !m.Required||!newerVersion(m.Version,clientVersion){return false}
+ if !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(m.SHA256){return false}
+ u,err:=url.Parse(m.DownloadURL)
+ if err!=nil||u.Scheme!="https"||u.Host!="github.com"||
+   !strings.HasPrefix(u.Path,"/MOnarh-ja1/MpolMessenger/releases/download/"){return false}
+ if !confirmWindowsUpdate(m.Version){return false}
+ dir:=filepath.Join(os.Getenv("LOCALAPPDATA"),"MpolMessenger","updates")
+ if err=os.MkdirAll(dir,0700);err!=nil{return false}
+ dst:=filepath.Join(dir,"MpolMessenger_"+m.Version+".exe")
+ tmp:=dst+".tmp"
+ request,err:=http.NewRequest("GET",m.DownloadURL,nil);if err!=nil{return false}
+ request.Header.Set("User-Agent","MpolMessengerUpdater/2.1")
+ download,err:=(&http.Client{Timeout:120*time.Second}).Do(request)
+ if err!=nil{return false}
+ defer download.Body.Close()
+ if download.StatusCode!=200{return false}
+ file,err:=os.OpenFile(tmp,os.O_CREATE|os.O_TRUNC|os.O_WRONLY,0600)
+ if err!=nil{return false}
+ hash:=sha256.New()
+ n,copyErr:=io.CopyN(io.MultiWriter(file,hash),download.Body,100*1024*1024+1)
+ closeErr:=file.Close()
+ if (copyErr!=nil&&copyErr!=io.EOF)||n>100*1024*1024||
+    closeErr!=nil||hex.EncodeToString(hash.Sum(nil))!=m.SHA256{
+    os.Remove(tmp);return false
+ }
+ _=os.Remove(dst)
+ if err=os.Rename(tmp,dst);err!=nil{os.Remove(tmp);return false}
+ if err=exec.Command(dst).Start();err!=nil{return false}
+ return true
+}
 func main(){
  readConfig()
  // An online server is already a secure origin. Open it directly, avoiding
  // the old localhost proxy and stale launcher instances from previous releases.
  cfgMu.RLock();remote:=cfg.URL;cfgMu.RUnlock()
  if strings.HasPrefix(remote,"https://"){
+  if runtime.GOOS=="windows"&&strings.TrimRight(remote,"/")=="https://mpol-messenger-api.onrender.com"{
+   if checkWindowsUpdate(remote){return}
+   if err:=openApp(remote+"?mpol_client="+clientVersion);err==nil{return}
+  }
   if err:=openApp(remote);err==nil{return}
  }
  site,err:=fs.Sub(bundled,"ui");if err!=nil{log.Fatal(err)}

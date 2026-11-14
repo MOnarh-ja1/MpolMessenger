@@ -60,7 +60,9 @@
     <audio id="remoteAudio" autoplay></audio><div id="callTimer">00:00</div>
     <div class="call-accept-controls"><button id="acceptCall">Принять</button><button id="declineCall">Отклонить</button></div>
     <div class="call-active-controls hidden"><button id="muteMic">Микрофон</button><button id="toggleCamera">Камера</button><button id="shareScreen">Экран</button><button id="endCall" class="danger-btn">Завершить</button></div>
-    <label class="call-volume-label">Громкость <input id="callVolume" type="range" min="0" max="100" value="100"/></label>
+    <div class="call-audio-settings"><label><input id="noiseSuppression" type="checkbox" checked> Шумоподавление + эхоподавление</label>
+ <button id="enableCallAudio" type="button">🔊 Включить звук</button></div>
+ <label class="call-volume-label">Громкость <input id="callVolume" type="range" min="0" max="100" value="100"/></label>
    </div>
  </section>
  <div id="toastZone" aria-live="polite"></div>

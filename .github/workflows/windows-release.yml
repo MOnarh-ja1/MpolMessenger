@@ -34,7 +34,8 @@ jobs:
 
       - name: Validate JavaScript syntax
         shell: pwsh
-        run: node --check client/ui/app.js
+        run: |
+          node --check client/ui/app.js
           node --check client/ui/voice.js
           node --check client/ui/calls.js
 
@@ -81,12 +82,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v2.0.0-preview"
+          $tag = "v2.1.0"
           $assets = @("MpolMessenger.exe", "MpolMessenger_Full_Project.zip")
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $tag $assets --title "MPOL Messenger 2.0 Preview — Calls, Voice, Reactions and Favorites" --notes "MPOL 2.0 preview includes browser WebRTC voice/video signaling (STUN-only, TURN not configured), voice messages, reactions, photos, favorites, archive and chat filters. E2EE and reliable calls across restrictive networks are not implemented or audited." --prerelease --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
+            gh release create $tag $assets --title "MPOL Messenger 2.1.0 — Profile, Calls, Deleted Messages and Update Manager" --notes "MPOL 2.1 release: exact server-side developer role allowlist, improved profile, chat avatars, physical deletion of new messages, microphone recovery, noise/echo cancellation, ringtone and Windows updater with hash verification. Existing older EXE cannot silently self-update; download from GitHub Releases. WebRTC STUN-only, TURN not configured. Not E2EE or security audited." --prerelease --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
           }
           if ($LASTEXITCODE -ne 0) { throw "GitHub release upload failed" }

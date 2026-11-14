@@ -120,14 +120,14 @@ function updateHeader(){if(!state.active)return;const c=state.active;
  $('videoCall').classList.toggle('hidden',c.is_group||c.is_saved);
 }
 function renderMessages(){const root=$('messages');root.replaceChildren();let lastDay='';const c=state.active;
- for(const m of state.messages){const day=new Date(m.sent_at).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});if(day!==lastDay){const label=document.createElement('div');label.className='day-divider';label.textContent=day;root.append(label);lastDay=day}
+ for(const m of state.messages){if(m.deleted)continue;const day=new Date(m.sent_at).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});if(day!==lastDay){const label=document.createElement('div');label.className='day-divider';label.textContent=day;root.append(label);lastDay=day}
   const mine=m.user_id===state.me.id;let reply='';if(m.reply_to){const original=state.messages.find(x=>x.id===m.reply_to);reply=`<div class="msg-reply">↪ ${esc(original?.body?.slice(0,80)||'Ответ на сообщение')}</div>`}
   const voice=!!m.attachment&&(['audio/webm','audio/ogg'].includes(m.attachment.type));
   const file=voice?'<button class="msg-file voice-file" data-audio="'+esc(m.attachment.id)+'">▶ Голосовое · '+Math.round(m.attachment.size/1024)+' КБ</button>':m.attachment?'<button class="msg-file" data-file="'+esc(m.attachment.id)+'">📎 '+esc(m.attachment.name)+' ('+Math.round(m.attachment.size/1024)+' КБ)</button>':'';
   const reacts=(m.reactions||[]).map(r=>'<button type="button" data-react="'+esc(r.emoji)+'" class="'+((r.users||[]).includes(state.me.id)?'my-reaction':'')+'">'+esc(r.emoji)+' '+r.count+'</button>').join('');
   const reactionHtml=reacts?'<div class="reaction-strip">'+reacts+'</div>':'';
   const row=document.createElement('div');row.className='msg-row'+(mine?' mine':'');
-  row.innerHTML=`<div class="mini-avatar">${esc(m.avatar)}</div><div class="msg-bubble">${!mine&&c?.is_group?`<div class="msg-sender">${esc(m.nick)}</div>`:''}${reply}<div class="msg-text">${m.deleted?'Сообщение удалено':esc(m.body)}</div>${file}${reactionHtml}<div class="msg-meta">${m.edited_at?'изм. · ':''}${timestr(m.sent_at)}${mine?(c?.read_states&&Object.entries(c.read_states).some(([uid,t])=>uid!==state.me.id&&new Date(t)>=new Date(m.sent_at))?' · ✓✓':' · ✓'):''}</div></div><div class="msg-actions">${!m.deleted?'<button data-action="reply" title="Ответить">↶</button><button data-action="react" title="Реакция">♡</button><button data-action="copy" title="Копировать">⧉</button>':''}${mine&&!m.deleted?'<button data-action="edit" title="Редактировать">✎</button><button data-action="delete" title="Удалить">×</button>':''}</div>`;
+  row.innerHTML=`<div class="mini-avatar">${m.avatar==='📷'?'<img class="avatar-photo" src="/api/avatars/'+encodeURIComponent(m.user_id)+'" alt="Аватар">':esc(m.avatar)}</div><div class="msg-bubble">${!mine&&c?.is_group?`<div class="msg-sender">${esc(m.nick)}</div>`:''}${reply}<div class="msg-text">${m.deleted?'Сообщение удалено':esc(m.body)}</div>${file}${reactionHtml}<div class="msg-meta">${m.edited_at?'изм. · ':''}${timestr(m.sent_at)}${mine?(c?.read_states&&Object.entries(c.read_states).some(([uid,t])=>uid!==state.me.id&&new Date(t)>=new Date(m.sent_at))?' · ✓✓':' · ✓'):''}</div></div><div class="msg-actions">${!m.deleted?'<button data-action="reply" title="Ответить">↶</button><button data-action="react" title="Реакция">♡</button><button data-action="copy" title="Копировать">⧉</button>':''}${mine&&!m.deleted?'<button data-action="edit" title="Редактировать">✎</button><button data-action="delete" title="Удалить">×</button>':''}</div>`;
   row.querySelectorAll('[data-action]').forEach(btn=>btn.onclick=()=>messageAction(btn.dataset.action,m));
   row.querySelectorAll('[data-react]').forEach(btn=>btn.onclick=()=>setReaction(m,btn.dataset.react)); 
   row.querySelector('[data-audio]')?.addEventListener('click',e=>playVoiceAttachment(m.attachment,e.currentTarget));
@@ -173,6 +173,10 @@ function wsConnect(){if(!storage.token||!state.me)return;try{const proto=locatio
   if(m.type==='call_signal'){onCallSignal(m);return}
   if(m.type==='authenticated'||m.type==='friend_request'){refreshAll().catch(()=>{});return}
   if(m.type==='message'){if(m.message.user_id!==state.me.id){notifyNewMessage(m.message)}if(state.active?.id===m.message.chat_id){if(!state.messages.some(x=>x.id===m.message.id)){state.messages.push(m.message);renderMessages()}api('/chats/'+state.active.id+'/read',{method:'POST'}).catch(()=>{})}refreshAll().catch(()=>{})}
+  if(m.type==='message_deleted'){
+   if(state.active?.id===m.chat_id){state.messages=state.messages.filter(x=>x.id!==m.message_id);renderMessages()}
+   refreshAll().catch(()=>{});return
+  }
   if(m.type==='message_updated'){if(state.active?.id===m.message.chat_id){const idx=state.messages.findIndex(x=>x.id===m.message.id);if(idx>=0){state.messages[idx]=m.message;renderMessages()}}refreshAll().catch(()=>{})}
   if(m.type==='chats_changed'||m.type==='friends_changed'||m.type==='presence'||m.type==='profile'||m.type==='read')refreshAll().catch(()=>{});
   if(m.type==='typing'&&state.active?.id===m.chat_id){$('typingIndicator').textContent='Собеседник печатает…';clearTimeout(state.typingTimer);state.typingTimer=setTimeout(()=>$('typingIndicator').textContent='',1300)}
@@ -216,11 +220,11 @@ function chatDetails(){if(!state.active)return;const c=state.active;
  $('leaveGroup')?.addEventListener('click',async()=>{if(!confirm('Покинуть группу?'))return;try{await api('/groups/'+c.id+'/members/'+state.me.id,{method:'DELETE'});closeModal();state.active=null;$('openedChat').classList.add('hidden');$('emptyChat').classList.remove('hidden');await refreshAll()}catch(e){toast(errorText(e))}})
 }
 function applyScale(){document.documentElement.style.zoom=state.scale+'%'}
-function openSettings(){modal('Настройки MPOL',`<div class="profile-id-card"><div class="profile-id-caption">ВАШ ID · ДЛЯ ПОИСКА В ДРУЗЬЯХ</div><div class="profile-id-row"><code>${esc(state.me.id)}</code><button id="copyProfileId" type="button">Скопировать</button></div></div><label>Никнейм<input id="profileNick" value="${esc(state.me.nick)}" maxlength="48"></label><label>Описание<input id="profileDescription" value="${esc(state.me.description)}" maxlength="260"></label><label>Аватар (символ)<input id="profileAvatar" value="${esc(state.me.avatar)}" maxlength="8"></label>
+function openSettings(){modal('Профиль и настройки',`<div class="profile-hero"><div class="profile-hero-avatar">${state.me.avatar==='📷'?'<img src="/api/avatars/'+encodeURIComponent(state.me.id)+'?t='+Date.now()+'" alt="Аватар">':esc(state.me.avatar||state.me.nick[0])}</div><div class="profile-hero-name"><h3>${esc(state.me.nick)}</h3><p>${esc(state.me.description||'Мой профиль MPOL')}</p>${state.me.is_developer?'<span class="developer-tag">Разработчик</span>':''}</div></div><section class="settings-panel"><h3>Мой аккаунт</h3><div class="profile-id-card"><div class="profile-id-caption">ВАШ ID · ДЛЯ ПОИСКА В ДРУЗЬЯХ</div><div class="profile-id-row"><code>${esc(state.me.id)}</code><button id="copyProfileId" type="button">Скопировать</button></div></div></section><section class="settings-panel"><h3>Редактирование профиля</h3><label>Никнейм<input id="profileNick" value="${esc(state.me.nick)}" maxlength="48"></label><label>О себе<textarea id="profileDescription" maxlength="260" rows="3">${esc(state.me.description||'')}</textarea></label><label>Аватар (символ)<input id="profileAvatar" value="${esc(state.me.avatar)}" maxlength="8"></label>
  <label>Фотография профиля (PNG, JPG или WEBP до 800 КБ)<input id="profilePhoto" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="uploadProfilePhoto" class="button outlined">Загрузить фото профиля</button>
- <label>Сетевой статус<select id="profileStatus"><option value="online">В сети</option><option value="away">Отошёл</option><option value="dnd">Не беспокоить</option><option value="invisible">Невидимка</option></select></label><button class="button" id="saveProfile">Сохранить профиль</button>
+ <label>Сетевой статус<select id="profileStatus"><option value="online">В сети</option><option value="away">Отошёл</option><option value="dnd">Не беспокоить</option><option value="invisible">Невидимка</option></select></label><button class="button" id="saveProfile">Сохранить профиль</button></section><section class="settings-panel"><h3>Уведомления и интерфейс</h3>
  <div class="setting-row">Уведомления Windows <input type="checkbox" id="notificationsOn" ${state.notif?'checked':''}></div><div class="setting-row">Звук сообщений <input type="checkbox" id="soundsOn" ${state.sound?'checked':''}></div><div class="setting-row">Масштаб интерфейса <select id="scaleSelect"><option value="85">85%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select></div>
- <div class="setting-row">Email: ${esc(state.me.email||'не указан')} ${state.me.email_verified?'✓ подтверждён':'(не подтверждён)'}</div>${state.me.email&&!state.me.email_verified?'<button id="verifyEmail" class="button outlined">Подтвердить email</button>':''}<button id="changePassword" class="button outlined">Изменить пароль</button><details class="developer-settings"><summary>Для разработчика</summary><button id="serverSettings" class="button outlined">Настройка сервера</button></details><button id="logOut" class="button outlined">Выйти из аккаунта</button><p class="secondary">ID можно отправить друзьям для поиска. Пароль и токен никому не передавайте.</p>`);
+ </section><section class="settings-panel"><h3>Безопасность</h3><div class="setting-row">Email: ${esc(state.me.email||'не указан')} ${state.me.email_verified?'✓ подтверждён':'(не подтверждён)'}</div>${state.me.email&&!state.me.email_verified?'<button id="verifyEmail" class="button outlined">Подтвердить email</button>':''}<button id="changePassword" class="button outlined">Изменить пароль</button>${state.me.is_developer?'<details class="developer-settings developer-only"><summary>Режим разработчика</summary><p>Доступ защищён проверкой прав на сервере.</p><button id="checkDeveloper" class="button outlined">Проверить права разработчика</button><button id="serverSettings" class="button outlined">Настройка сервера</button></details>':''}</section><button id="logOut" class="button outlined">Выйти из аккаунта</button><p class="secondary">ID можно отправить друзьям для поиска. Пароль и токен никому не передавайте.</p>`);
  $('copyProfileId').onclick=copyAccountId;
  $('uploadProfilePhoto').onclick=uploadProfilePhoto;
  $('profileStatus').value=state.me.status;$('scaleSelect').value=String(state.scale);
@@ -228,7 +232,10 @@ function openSettings(){modal('Настройки MPOL',`<div class="profile-id-
  $('notificationsOn').onchange=async e=>{if(e.target.checked&&'Notification'in window){const r=await Notification.requestPermission();state.notif=r==='granted';e.target.checked=state.notif}else state.notif=false;localStorage.setItem('mpol_notify',state.notif?'1':'0')};
  $('soundsOn').onchange=e=>{state.sound=e.target.checked;localStorage.setItem('mpol_sound',state.sound?'1':'0')};
  $('scaleSelect').onchange=e=>{state.scale=Number(e.target.value);localStorage.setItem('mpol_scale',state.scale);applyScale()};
- $('logOut').onclick=()=>signout(true);$('changePassword').onclick=changePassword;$('serverSettings').onclick=configServer;$('verifyEmail')?.addEventListener('click',verifyEmail);
+ $('logOut').onclick=()=>signout(true);$('changePassword').onclick=changePassword;
+ $('checkDeveloper')?.addEventListener('click',async()=>{try{const result=await api('/developer/status');toast(result.ok?'Права разработчика подтверждены':'Доступ ограничен')}catch(e){toast('Нет доступа: '+errorText(e))}});
+ $('serverSettings')?.addEventListener('click',async()=>{try{await api('/developer/status');configServer()}catch(e){toast('Нет прав разработчика')}});
+ $('verifyEmail')?.addEventListener('click',verifyEmail);
 }
 async function uploadProfilePhoto(){
  const file=$('profilePhoto')?.files?.[0];if(!file)return toast('Выберите изображение');
@@ -269,4 +276,27 @@ setInterval(()=>{if(!state.me)serverHealth()},10000);
 setInterval(()=>{if(state.me)refreshRequests()},12000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.me)refreshAll()});
 window.addEventListener('focus',()=>{if(state.me)refreshRequests()});
+
+function checkRequiredExeUpdate(){
+ const params=new URLSearchParams(location.search);
+ const version=params.get('mpol_client');
+ const appWindow=(window.matchMedia?.('(display-mode: standalone)').matches||
+  window.matchMedia?.('(display-mode: minimal-ui)').matches||navigator.standalone===true);
+ if(location.hostname!=='mpol-messenger-api.onrender.com')return;
+ if(!appWindow&&!version)return;
+ if(version==='2.1.0')return;
+ // The old EXE did not include an updater: its hosted UI can still show
+ // a blocking version notice. Browsers cannot silently execute downloads.
+ const layer=document.createElement('div');
+ layer.className='mpol-required-update';
+ layer.innerHTML='<div class="mpol-update-card"><div class="mpol-update-label">MPOL · ОБНОВЛЕНИЕ</div>'+
+ '<h2>Требуется новая версия</h2>'+
+ '<p>Вышел Mpol Messenger 2.1.0. Исправлены звонки, настройки профиля, аватары и удаление сообщений.</p>'+
+ '<p>Скачайте новый EXE, закройте старое окно и запустите скачанную версию. Аккаунт и переписки останутся на сервере.</p>'+
+ '<a class="mpol-update-download" href="https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v2.1.0/MpolMessenger.exe" target="_blank" rel="noopener">Скачать обновление EXE ↗</a>'+
+ '<small>Браузер по правилам Windows не может автоматически открыть скачанный EXE.</small></div>';
+ document.body.append(layer);
+}
+checkRequiredExeUpdate();
+
 startup();
