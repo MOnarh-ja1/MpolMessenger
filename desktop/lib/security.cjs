@@ -14,8 +14,8 @@ function normalizeServerOrigin(value) {
      !/^[a-z0-9.-]+$/i.test(u.hostname) || !u.hostname.includes('.') ||
      u.hostname.startsWith('.') || u.hostname.endsWith('.') ||
      u.hostname.includes('..') ||
-     /^(localhost|.*\\.localhost|.*\\.local|.*\\.internal)$/i.test(u.hostname) ||
-     /^\\d+\\.\\d+\\.\\d+\\.\\d+$/.test(u.hostname)) return null;
+     /^(localhost|.*\.localhost|.*\.local|.*\.internal)$/i.test(u.hostname) ||
+     /^\d+\.\d+\.\d+\.\d+$/.test(u.hostname)) return null;
   return u.origin;
 }
 function isMpolUrl(value, trustedOrigin=SERVER_ORIGIN) {
@@ -31,7 +31,7 @@ function canOpenExternal(value) {
 }
 function safeFilename(filename) {
   const name = String(filename || 'MPOL-download')
-    .replace(/[<>:"\/\\|?*\x00-\x1f]/g,'_')
+    .replace(/[<>:"\/\|?*\x00-\x1f]/g,'_')
     .replace(/[. ]+$/g,'').slice(0,150);
   return name || 'MPOL-download';
 }
