@@ -64,7 +64,7 @@ async function toggleVoiceRecording(){
    if(state.active?.id!==session.chatId)return toast('Откройте исходный чат для отправки');
    $('sendRecording').disabled=true;
    try{const file=new File([blob],'voice-'+Date.now()+'.webm',{type:'audio/webm'});
-    await uploadFile(file);closeModal()}finally{URL.revokeObjectURL(url)}
+    if(await uploadFile(file)){closeModal();URL.revokeObjectURL(url)}else $('sendRecording').disabled=false}catch(e){toast(e.message);$('sendRecording').disabled=false}
   };
   setTimeout(()=>URL.revokeObjectURL(url),5*60*1000);
  };
