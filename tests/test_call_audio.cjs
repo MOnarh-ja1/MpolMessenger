@@ -23,9 +23,12 @@ class FakeMediaStream{
  getVideoTracks(){return this.tracks.filter(t=>t.kind==='video')}
 }
 class FakePC{
- constructor(opts){this.iceServers=opts.iceServers;this.connectionState='new'}
+ constructor(opts){this.iceServers=opts.iceServers;this.connectionState='new';this.senders=[]}
  addTrack(track){
-  return {track,getParameters:()=>({encodings:[{}]}),setParameters:()=>Promise.resolve()}
+  const sender={track,params:null,
+   getParameters:()=>({encodings:[{}]}),
+   setParameters(v){this.params=v;return Promise.resolve()}};
+  this.senders.push(sender);return sender;
  }
 }
 const localStorage={getItem:()=>null,setItem(){}};
@@ -37,14 +40,20 @@ const ctx=vm.createContext({
  console,Date
 });
 vm.runInContext(code,ctx);
-assert.equal(vm.runInContext('callNoiseEnabled',ctx),false,
- 'Noise gate must be optional; clipping speech on some microphones');
+assert.equal(vm.runInContext('callNoiseEnabled',ctx),true,
+ 'Noise suppression should be on by default to reduce acoustic echo');
 assert.equal(vm.runInContext('callAudioConstraints().echoCancellation',ctx),true);
-assert.equal(vm.runInContext('callAudioConstraints().autoGainControl',ctx),false);
-ctx.testStream=new FakeMediaStream([{id:'localmic',kind:'audio'}]);
+assert.equal(vm.runInContext('callAudioConstraints().autoGainControl',ctx),true);
+assert.equal(vm.runInContext('callAudioConstraints().noiseSuppression',ctx),true);
+ctx.testStream=new FakeMediaStream([{id:'localmic',kind:'audio'},{id:'localcam',kind:'video'}]);
 vm.runInContext(`currentCall={id:'abc',peer:'B',mode:'video',nick:'Peer',isCaller:true,
  stream:testStream,ice:[],started:0}; createPeer();`,ctx);
 let pc=vm.runInContext('currentCall.pc',ctx);
+const cameraSender=pc.senders.find(x=>x.track.kind==='video');
+assert.equal(cameraSender.params.encodings[0].maxBitrate,2000000,
+ 'Video capped at 2Mbps instead of pixelated 400kbps');
+assert.equal(cameraSender.params.encodings[0].maxFramerate,30);
+assert.equal(cameraSender.params.degradationPreference,'balanced');
 pc.ontrack({track:{id:'in-audio',kind:'audio'},streams:[]});
 const audio=element('remoteAudio'),video=element('remoteVideo');
 assert.equal(audio.srcAssignments,1);
@@ -57,7 +66,7 @@ assert.equal(video.muted,true,'Only the audio element may output sound, no dupli
 pc.ontrack({track:{id:'in-video',kind:'video'},streams:[]});
 assert.equal(audio.srcAssignments,1);
 assert.equal(video.srcAssignments,1);
-console.log('PASS: call audio stream stays stable during video track events; video muted; optional noise gate');
+console.log('PASS: call audio remains single-output, echo cancel/denoise on, HD bitrate and 30 FPS cap');
 
 (async()=>{
  // Browser requests short-lived ICE credentials from the API before negotiating.
