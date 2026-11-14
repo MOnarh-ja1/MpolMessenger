@@ -35,7 +35,7 @@ function updateOwnAvatar(){
  if(state.me.avatar==='📷'){btn.textContent='';btn.style.backgroundImage='url(/api/avatars/'+encodeURIComponent(state.me.id)+'?t='+Date.now()+')'}
  else{btn.textContent=state.me.nick.slice(0,1).toUpperCase();btn.style.backgroundImage=''}
 }
-function showLogin(){state.me=null;$('authScreen').classList.remove('hidden');$('mainScreen').classList.add('hidden');$('password').value='';serverHealth()}
+function showLogin(){document.getElementById('mainScreen')?.classList.remove('mobile-chat-open');state.me=null;$('authScreen').classList.remove('hidden');$('mainScreen').classList.add('hidden');$('password').value='';serverHealth()}
 function showApp(){ $('authScreen').classList.add('hidden');$('mainScreen').classList.remove('hidden');}
 // No window-level globals exposed: every on-screen action binds a real handler.
 async function serverHealth(){try{const r=await api('/health');$('serverStatus').textContent=r.ok?(r.temporary_storage?'Тестовый онлайн · данные могут исчезнуть':r.durable_database?'Онлайн · сообщения сохраняются':'Сервер доступен'):'Сервер не отвечает';$('serverStatus').previousElementSibling.classList.toggle('good',!!r.ok)}catch{$('serverStatus').textContent='Сервер недоступен';$('serverStatus').previousElementSibling.classList.remove('good')}}
@@ -96,7 +96,7 @@ async function toggleChatArchive(){
 function updateFilters(){
  document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('active',b.dataset.filter===state.chatFilter))
 }
-function renderTab(tab){if(tab==='saved'){openSavedChat();return}state.tab=tab;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));
+function renderTab(tab){$('mainScreen').classList.remove('mobile-chat-open');if(tab==='saved'){openSavedChat();return}state.tab=tab;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));
  $('listTitle').textContent=({chats:'Сообщения',friends:'Друзья',groups:'Группы',notifications:'Заявки в друзья',settings:'Настройки'})[tab]||'Сообщения';
  $('chatFilters').classList.toggle('hidden',tab!=='chats');
  $('listSubtitle').textContent=({chats:'На связи с теми, кто важен',friends:'Ваш круг общения',groups:'Командные беседы',notifications:'Новые знакомства',settings:'Персональные параметры'})[tab];
@@ -131,7 +131,7 @@ function renderList(){let filter=$('listSearch').value.trim().toLowerCase();cons
  });if(!a.length)root.innerHTML='<div class="list-blank"><strong>Диалогов пока нет</strong>Создайте чат или найдите друзей.</div>';
  for(const c of a){const el=document.createElement('button');el.className='chat-item'+(state.active?.id===c.id?' selected':'');el.innerHTML=avatar(c.avatar,c.online,c.peer_id)+`<div class="chat-item-body"><div class="chat-item-head"><strong>${esc(c.name)}</strong><time>${datestr(c.last?.sent_at)}</time></div><div class="chat-item-preview">${esc(c.last?.deleted?'Сообщение удалено':c.last?.body|| (c.last?.attachment?'📎 '+c.last.attachment.name:'Новая переписка'))}</div></div>${c.unread?`<span class="count-badge">${c.unread}</span>`:''}`;el.onclick=()=>selectChat(c.id);root.append(el)}
 }
-async function selectChat(id){try{const c=state.chats.find(x=>x.id===id);if(!c)throw Error('Чат не найден');state.active=c;state.reply=null;replyUpdate();$('emptyChat').classList.add('hidden');$('openedChat').classList.remove('hidden');updateHeader();state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages();await api('/chats/'+encodeURIComponent(id)+'/read',{method:'POST'});state.active.unread=0;renderList();$('messageInput').focus()}catch(e){toast(errorText(e))}}
+async function selectChat(id){try{const c=state.chats.find(x=>x.id===id);if(!c)throw Error('Чат не найден');state.active=c;state.reply=null;replyUpdate();$('mainScreen').classList.add('mobile-chat-open');$('emptyChat').classList.add('hidden');$('openedChat').classList.remove('hidden');updateHeader();state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages();await api('/chats/'+encodeURIComponent(id)+'/read',{method:'POST'});state.active.unread=0;renderList();$('messageInput').focus()}catch(e){toast(errorText(e))}}
 function updateHeader(){if(!state.active)return;const c=state.active;
  $('chatAvatar').innerHTML=(c.avatar==='📷'&&c.peer_id)?'<img class="avatar-photo" src="/api/avatars/'+encodeURIComponent(c.peer_id)+'" alt="">':esc(c.avatar);
  $('chatName').textContent=c.name;$('chatPresence').textContent=c.is_saved?'Только вы':c.is_group?c.members.length+' участников':c.online?'● В сети':'Не в сети';
@@ -336,6 +336,18 @@ async function checkRequiredExeUpdate(){
  '<small>Старые EXE не могут самостоятельно запускать скачанные программы. Автоматическая проверка и установка с подтверждением предусмотрены в новых версиях.</small></div>';
  document.body.append(layer);
 }
+// Compact iPhone chat navigation: return to lists without losing messages.
+const mobileBack=document.createElement('button');
+mobileBack.id='mobileBack';
+mobileBack.type='button';
+mobileBack.textContent='‹';
+mobileBack.title='Вернуться к сообщениям';
+mobileBack.setAttribute('aria-label','Назад к списку чатов');
+mobileBack.addEventListener('click',()=>{
+ $('mainScreen').classList.remove('mobile-chat-open');
+ $('messageInput').blur();
+});
+document.querySelector('.conv-header')?.prepend(mobileBack);
 checkRequiredExeUpdate();
 
 startup();
