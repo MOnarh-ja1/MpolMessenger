@@ -271,6 +271,7 @@ def health():
 # No credentials or secrets are stored in GitHub; configure them in the host environment.
 @app.get('/api/calls/ice')
 def ice_configuration(u: User = Depends(authed)):
+    limit('call-ice:' + u.id, 30, 60)
     servers = [{'urls': ['stun:stun.l.google.com:19302']}]
     urls = [v.strip() for v in os.getenv('MPOL_TURN_URLS', '').split(',') if v.strip()]
     urls = [v for v in urls if re.fullmatch(r'turns?:[^\s]{3,240}', v)][:6]
