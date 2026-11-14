@@ -52,7 +52,7 @@
     },
     "portable": {
       "artifactName": "MpolMessenger.exe",
-      "requestExecutionLevel": "asInvoker"
+      "requestExecutionLevel": "user"
     },
     "publish": null
   }
