@@ -114,6 +114,47 @@ async function main(){
   assert.equal(moderationUi.developer.adminVisible,true,'Developer sees moderation UI');
   assert.ok(moderationUi.deleteChat&&moderationUi.profileButton,'Chat toolbar controls missing');
   console.log('PASS peer profile, developer-only moderation UI and chat deletion controls');
+  const profileTap=await page.evaluate(async()=>{
+    const originalApi=api;
+    try{
+      api=async path=>path.startsWith('/users/')?{
+        id:'MPPEER123',nick:'Собеседник',avatar:'◉',online:true,
+        description:'Профиль для проверки'
+      }:originalApi(path);
+      const header=document.getElementById('chatPeerHeader');
+      if(header.disabled)return {opened:false,reason:'header disabled'};
+      header.click();
+      await new Promise(r=>setTimeout(r,0));
+      return {opened:document.getElementById('modalTitle').textContent==='Профиль пользователя',
+        hasCopy:!!document.getElementById('copyPeerId'),
+        label:header.getAttribute('title')};
+    }finally{api=originalApi;closeModal()}
+  });
+  assert.ok(profileTap.opened&&profileTap.hasCopy,'Peer profile click failed: '+JSON.stringify(profileTap));
+
+  const clipboardFallback=await page.evaluate(async()=>{
+    const descriptor=Object.getOwnPropertyDescriptor(navigator,'clipboard');
+    const originalExec=document.execCommand;
+    let selected='';
+    Object.defineProperty(navigator,'clipboard',{configurable:true,
+      value:{writeText:async()=>{throw Error('Clipboard permission denied')}}});
+    document.execCommand=kind=>{
+      selected=document.activeElement?.value||'';
+      return kind==='copy';
+    };
+    try{
+      const copied=await copyMpolText('Проверка копирования MPOL');
+      return {copied,selected};
+    }finally{
+      document.execCommand=originalExec;
+      if(descriptor)Object.defineProperty(navigator,'clipboard',descriptor);
+      else delete navigator.clipboard;
+    }
+  });
+  assert.equal(clipboardFallback.copied,true,'Fallback copy must work without Clipboard API permission');
+  assert.equal(clipboardFallback.selected,'Проверка копирования MPOL');
+  console.log('PASS: peer profile header opens on touch and clipboard fallback copies text');
+
   // iPhone-sized viewport: only one pane should be visible, input never clipped.
   for(const [width,height] of [[390,844],[375,667],[320,568]]){
    await page.setViewportSize({width,height});
