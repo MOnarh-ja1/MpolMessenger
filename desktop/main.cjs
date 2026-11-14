@@ -5,7 +5,7 @@ const path = require('node:path');
 const { SERVER_ORIGIN, isMpolUrl, canOpenExternal,
   safeFilename, normalizeMediaTypes } = require('./lib/security.cjs');
 
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '2.6.0';
 const { offerDesktopUpdate } = require('./lib/updater.cjs');
 const APP_URL = SERVER_ORIGIN + '/?mpol_client=' + APP_VERSION;
 const WINDOW_PARTITION = 'persist:mpol-desktop-v23';
