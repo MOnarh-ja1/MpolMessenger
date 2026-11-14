@@ -1,7 +1,6 @@
 "use strict";
 /* MPOL call control. Browser WebRTC with permission-on-demand and authenticated
-   WebSocket signaling. STUN-only preview: peer-to-peer calls may fail on
-   symmetric NATs or restrictive networks until a TURN relay is configured. */
+   WebSocket signaling. TURN-enabled ICE configuration fetched from the authenticated server. */
 let currentCall=null;
 let callTick=null;
 let callSoundInterval=null,callAudioContext=null;
@@ -100,6 +99,22 @@ async function recoverMicrophone(){
  }catch(e){toast('Микрофон недоступен: '+e.message)}
  finally{c.recovering=false}
 }
+const MPOL_FALLBACK_ICE=[{urls:'stun:stun.l.google.com:19302'}];
+// Short-lived TURN credentials come from the authenticated server, not static JS.
+async function loadCallIce(call){
+ let config=null;
+ try{config=await api('/calls/ice')}
+ catch(e){console.warn('MPOL ICE config unavailable:',e.message)}
+ if(currentCall!==call)return false;
+ call.iceServers=Array.isArray(config?.iceServers)&&config.iceServers.length?
+  config.iceServers:MPOL_FALLBACK_ICE;
+ call.relayConfigured=!!config?.relayConfigured;
+ if(!call.relayConfigured){
+  $call('callQuality').textContent='Без TURN некоторые мобильные сети не пропускают звонки.';
+  $call('callQuality').classList.add('warning');
+ }
+ return true;
+}
 const $call=id=>document.getElementById(id);
 function signalCall(kind,payload={}){
  if(!currentCall||!state.ws||state.ws.readyState!==WebSocket.OPEN){toast('Нет соединения для звонка');return false}
@@ -115,7 +130,7 @@ function callLayout(){
  document.querySelector('.call-active-controls').classList.toggle('hidden',c.incoming);
  $call('muteMic').textContent='Микрофон включён';
  $call('toggleCamera').classList.toggle('hidden',c.mode!=='video');
- $call('shareScreen').classList.toggle('hidden',c.mode!=='video');
+ $call('shareScreen').classList.toggle('hidden',c.mode!=='video'||!navigator.mediaDevices?.getDisplayMedia);
  $call('callTimer').textContent='00:00';
  $call('callQuality').textContent='Ожидаем аудиосоединение…';
  $call('callQuality').classList.remove('warning');
@@ -132,15 +147,17 @@ async function beginCall(mode){
  let stream;try{stream=await getLocalCallMedia(mode)}catch(e){return toast('Не удалось получить доступ к устройствам: '+e.message)}
  currentCall={id:crypto.randomUUID(),peer:c.peer_id,nick:c.name,mode,incoming:false,isCaller:true,stream,
   pc:null,ice:[],started:0,screen:null,remoteStream:null,restarts:0};
+ const outgoing=currentCall;
  callLayout();$call('localVideo').srcObject=stream;
  $call('localVideo').classList.toggle('hidden',mode!=='video');
+ if(!await loadCallIce(outgoing))return;
  if(!signalCall('invite',{mode})){endCall(false);return}
  startCallRingtone(false);
  currentCall.timeout=setTimeout(()=>{if(currentCall&&!currentCall.started){toast('На вызов не ответили');endCall(true)}},60000);
 }
 function createPeer(){
  const c=currentCall;if(!c)return null;
- const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}],iceCandidatePoolSize:2});
+ const pc=new RTCPeerConnection({iceServers:c.iceServers||MPOL_FALLBACK_ICE,iceCandidatePoolSize:0});
  c.pc=pc;
  c.remoteStream=new MediaStream();
  for(const t of c.stream.getTracks()){
@@ -188,6 +205,8 @@ function createPeer(){
    setTimeout(()=>tryRecoverCall(c),3500);
   }else if(pc.connectionState==='failed'){
    $call('callStatus').textContent='Сеть потеряна — восстанавливаем…';
+   $call('callQuality').textContent=c.relayConfigured?'Проверяем соединение через TURN/STUN…':'Для этой сети может потребоваться TURN-сервер';
+   $call('callQuality').classList.add('warning');
    tryRecoverCall(c);
   }else if(pc.connectionState==='closed'&&currentCall===c){endCall(false)}
  };
@@ -203,7 +222,8 @@ async function acceptIncomingCall(){
   c.stream=await getLocalCallMedia(c.mode);c.incoming=false;stopCallRingtone();
   callLayout();$call('callStatus').textContent='Подключаемся…';
   $call('localVideo').srcObject=c.stream;
-  createPeer();signalCall('accept');
+  if(!await loadCallIce(c))return;
+  createPeer();if(!signalCall('accept'))endCall(false);
  }catch(e){toast('Микрофон/камера не разрешены: '+e.message);signalCall('decline');endCall(false)}
 }
 async function onCallSignal(m){

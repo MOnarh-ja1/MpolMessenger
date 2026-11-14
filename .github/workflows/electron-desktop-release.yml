@@ -7,6 +7,9 @@ on:
     branches: [main]
     paths:
       - "desktop/**"
+      - "client/ui/**"
+      - "server/**"
+      - "tests/**"
       - ".github/workflows/electron-desktop-release.yml"
   workflow_dispatch:
 
@@ -73,7 +76,7 @@ jobs:
       - name: Upload EXE as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MPOL-Messenger-Electron-2.3.1-x64
+          name: MPOL-Messenger-Electron-2.4.0-x64
           path: desktop/dist/MpolMessenger.exe
           if-no-files-found: error
 
@@ -82,10 +85,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v2.3.1-desktop"
+          $tag = "v2.4.0-desktop"
           $asset = "desktop/dist/MpolMessenger.exe"
-          $title = "MPOL Messenger Desktop 2.3.1 — Separate Windows App (Electron)"
-          $notes = "Real standalone Windows x64 EXE: Electron 45.3.2 bundles its own Chromium; no Microsoft Edge application window. Uses the current MPOL online server and existing Neon accounts/chats. Includes in-app GitHub release check and EXE download; original four icons loaded from hosted MPOL UI. Includes native media permission dialogs, Windows notifications, F11 and safe file downloads. Unsigned prerelease; Windows SmartScreen may warn. WebRTC still needs a TURN relay for some networks; media quality is not guaranteed."
+          $title = "MPOL Messenger Desktop 2.4.0 — Separate Windows App (Electron)"
+          $notes = "Real standalone Windows x64 EXE: Electron 45.3.2 bundles its own Chromium; no Microsoft Edge application window. Uses the current MPOL online server and existing Neon accounts/chats. Includes in-app GitHub release check and EXE download; original four icons loaded from hosted MPOL UI. Includes native media permission dialogs, Windows notifications, F11 and safe file downloads. Unsigned prerelease; Windows SmartScreen may warn. WebRTC now supports authenticated TURN credentials when configured on the MPOL server; use MPOL_TURN_URLS and MPOL_TURN_SECRET. iPhone layout improved. Relay is required on restrictive networks and call reliability is not guaranteed until configured and tested."
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $asset --clobber --repo $env:GITHUB_REPOSITORY

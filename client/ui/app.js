@@ -131,7 +131,7 @@ function renderList(){let filter=$('listSearch').value.trim().toLowerCase();cons
  });if(!a.length)root.innerHTML='<div class="list-blank"><strong>Диалогов пока нет</strong>Создайте чат или найдите друзей.</div>';
  for(const c of a){const el=document.createElement('button');el.className='chat-item'+(state.active?.id===c.id?' selected':'');el.innerHTML=avatar(c.avatar,c.online,c.peer_id)+`<div class="chat-item-body"><div class="chat-item-head"><strong>${esc(c.name)}</strong><time>${datestr(c.last?.sent_at)}</time></div><div class="chat-item-preview">${esc(c.last?.deleted?'Сообщение удалено':c.last?.body|| (c.last?.attachment?'📎 '+c.last.attachment.name:'Новая переписка'))}</div></div>${c.unread?`<span class="count-badge">${c.unread}</span>`:''}`;el.onclick=()=>selectChat(c.id);root.append(el)}
 }
-async function selectChat(id){try{const c=state.chats.find(x=>x.id===id);if(!c)throw Error('Чат не найден');state.active=c;state.reply=null;replyUpdate();$('mainScreen').classList.add('mobile-chat-open');$('emptyChat').classList.add('hidden');$('openedChat').classList.remove('hidden');updateHeader();state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages();await api('/chats/'+encodeURIComponent(id)+'/read',{method:'POST'});state.active.unread=0;renderList();$('messageInput').focus()}catch(e){toast(errorText(e))}}
+async function selectChat(id){try{const c=state.chats.find(x=>x.id===id);if(!c)throw Error('Чат не найден');state.active=c;state.reply=null;replyUpdate();$('mainScreen').classList.add('mobile-chat-open');$('emptyChat').classList.add('hidden');$('openedChat').classList.remove('hidden');updateHeader();state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages();await api('/chats/'+encodeURIComponent(id)+'/read',{method:'POST'});state.active.unread=0;renderList();if(window.matchMedia('(min-width:601px)').matches)$('messageInput').focus()}catch(e){toast(errorText(e))}}
 function updateHeader(){if(!state.active)return;const c=state.active;
  $('chatAvatar').innerHTML=(c.avatar==='📷'&&c.peer_id)?'<img class="avatar-photo" src="/api/avatars/'+encodeURIComponent(c.peer_id)+'" alt="">':esc(c.avatar);
  $('chatName').textContent=c.name;$('chatPresence').textContent=c.is_saved?'Только вы':c.is_group?c.members.length+' участников':c.online?'● В сети':'Не в сети';
@@ -337,6 +337,26 @@ async function checkRequiredExeUpdate(){
  document.body.append(layer);
 }
 // Compact iPhone chat navigation: return to lists without losing messages.
+// Safari shrinks visualViewport for the keyboard, but not always CSS 100dvh.
+// Only override height while an input is focused AND the keyboard is visible;
+// normal resizing/rotation should always use the browser's CSS dynamic viewport.
+function syncMpolMobileViewport(){
+ const root=document.documentElement;
+ const active=document.activeElement;
+ const editing=active&&['INPUT','TEXTAREA'].includes(active.tagName);
+ if(window.visualViewport&&window.innerWidth<=600&&editing&&
+    window.visualViewport.height<window.innerHeight-110){
+  root.style.setProperty('--mpol-mobile-height',
+    Math.round(window.visualViewport.height)+'px');
+ }else root.style.removeProperty('--mpol-mobile-height');
+}
+if(window.visualViewport){
+ window.visualViewport.addEventListener('resize',syncMpolMobileViewport,{passive:true});
+ window.addEventListener('resize',syncMpolMobileViewport,{passive:true});
+ document.addEventListener('focusin',syncMpolMobileViewport);
+ document.addEventListener('focusout',syncMpolMobileViewport);
+ syncMpolMobileViewport();
+}
 const mobileBack=document.createElement('button');
 mobileBack.id='mobileBack';
 mobileBack.type='button';

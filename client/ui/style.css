@@ -268,3 +268,70 @@ body{min-width:0!important;width:100%;height:100dvh;height:100vh;overflow:hidden
  .call-card{width:100%;padding:15px}
  .call-video-area{max-height:45vh}
 }
+
+
+/* MPOL Black 2.4 — iPhone Safari, Android and compact touch devices */
+@media (max-width:600px) {
+  :root { -webkit-text-size-adjust:100%; text-size-adjust:100% }
+  html {height:100%;overscroll-behavior:none}
+  body {height:var(--mpol-mobile-height,100dvh)!important;overscroll-behavior:none}
+  .auth-shell{height:100%;padding:calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));}
+  .auth-card {max-width:420px;padding:24px 20px}
+  .auth-card input,.modal-body input:not([type=checkbox]),.list-search input,
+  .composer input,.message-search input{font-size:16px!important}
+  .app{height:100%!important;max-height:100%!important;
+    grid-template-rows:minmax(0,1fr) calc(63px + env(safe-area-inset-bottom))!important}
+  .rail{height:calc(63px + env(safe-area-inset-bottom));min-height:0;max-height:none;
+    padding:4px 7px env(safe-area-inset-bottom);gap:6px}
+  .rail-stack{min-width:0;gap:1px}
+  .rail-stack .rail-btn{width:clamp(42px,12vw,53px);height:49px;min-width:0;min-height:45px}
+  .rail-bottom .self-avatar{width:38px;height:38px}
+  .chat-list-panel{height:100%;overflow:hidden}
+  .list-header{padding:calc(14px + env(safe-area-inset-top)) 17px 10px}
+  .list-header h2{margin:3px 0;font-size:26px}
+  .chat-list{padding-bottom:12px;-webkit-overflow-scrolling:touch}
+  .chat-item{min-height:70px}
+  .chat-filters{scroll-snap-type:x proximity}
+  .chat-filters button{min-height:34px;scroll-snap-align:start}
+  .account-id-card{margin:5px 10px 8px;padding:9px 10px}
+  .app.mobile-chat-open{grid-template-rows:minmax(0,1fr)!important}
+  .app.mobile-chat-open .conversation{display:flex;min-height:0;overflow:hidden}
+  .opened-chat{height:100%;max-height:100%}
+  .conv-header{height:auto;min-height:calc(59px + env(safe-area-inset-top));
+    padding:max(8px,env(safe-area-inset-top)) 8px 8px!important}
+  .conv-user{gap:7px;overflow:hidden}
+  .conv-user .avatar{width:34px;height:34px;border-radius:10px}
+  .conv-user h3{max-width:110px;font-size:14px}
+  .conv-user span{font-size:10px}
+  .conv-top-actions{gap:4px}
+  .conv-top-actions #voiceCall,.conv-top-actions #videoCall{width:42px;height:42px;min-width:42px;
+     font-size:22px;display:grid;place-items:center}
+  #searchMessages{display:none!important}
+  #mobileBack{width:40px;height:42px;min-width:40px}
+  .messages{min-height:0;flex:1;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+    padding:12px 9px 10px}
+  .msg-row{max-width:96%}
+  .msg-bubble{max-width:100%;padding:10px 12px}
+  .msg-actions{visibility:visible;opacity:.8}
+  .msg-actions button{padding:6px;min-width:28px;min-height:28px}
+  .composer{margin:4px 6px max(7px,env(safe-area-inset-bottom));padding:5px;gap:3px;
+    border-radius:14px}
+  .composer input{padding:8px 4px}
+  .composer-icon{min-width:34px;min-height:38px;font-size:21px}
+  .send-button{min-width:39px;height:39px}
+  .modal-layer{padding:calc(10px + env(safe-area-inset-top)) 9px calc(10px + env(safe-area-inset-bottom))}
+  .modal{width:100%;max-height:100%;overflow-y:auto}
+  .call-layer{padding:max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom));
+    align-items:center;overflow-y:auto}
+  .call-card{width:100%;max-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    padding:16px 12px}
+  .call-card h2{font-size:20px;margin-top:10px}
+  .call-video-area{max-height:32dvh;margin:10px auto}
+  .call-accept-controls,.call-active-controls{display:flex;flex-wrap:wrap;
+    justify-content:center;gap:8px}
+  .call-accept-controls button,.call-active-controls button{min-height:45px;flex:1 1 42%;font-size:13px}
+  .call-audio-settings{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px}
+  .call-quality{line-height:1.35}
+  #toastZone{left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom))}
+  .toast{max-width:100%}
+}

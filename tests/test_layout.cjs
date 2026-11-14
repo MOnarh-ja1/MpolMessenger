@@ -75,6 +75,28 @@ async function main(){
    assert.ok(info.scrollHeight<=height+2,'Vertical UI overflow at '+width+'x'+height);
    console.log('PASS responsive '+width+'x'+height+' composer bottom '+Math.round(info.composer.bottom));
   }
+
+  // iPhone-sized viewport: only one pane should be visible, input never clipped.
+  for(const [width,height] of [[390,844],[375,667],[320,568]]){
+   await page.setViewportSize({width,height});
+   await page.evaluate(()=>document.getElementById('mainScreen').classList.add('mobile-chat-open'));
+   const m=await page.evaluate(()=>{
+     const rect=id=>{const b=document.getElementById(id).getBoundingClientRect();return {y:b.y,bottom:b.bottom,width:b.width,height:b.height}};
+     return {composer:rect('composer'),back:rect('mobileBack'),messages:rect('messages'),
+       hasSidebar:getComputedStyle(document.querySelector('.chat-list-panel')).display!=='none',
+       hasNavigation:getComputedStyle(document.querySelector('.rail')).display!=='none',
+       scrollWidth:document.documentElement.scrollWidth,
+       inputFont:parseFloat(getComputedStyle(document.getElementById('messageInput')).fontSize)};
+   });
+   assert.ok(m.composer.height>=35 && m.composer.bottom<=height+2,JSON.stringify(m));
+   assert.ok(m.messages.height>90,JSON.stringify(m));
+   assert.ok(m.back.width>=36,JSON.stringify(m));
+   assert.equal(m.hasSidebar,false,'Chat list must hide while chatting');
+   assert.equal(m.hasNavigation,false,'Bottom rail must hide while chatting');
+   assert.ok(m.inputFont>=16,'iPhone should not zoom the composer when focused');
+   assert.ok(m.scrollWidth<=width+2,'No horizontal overflow '+width);
+   console.log('PASS iPhone layout '+width+'x'+height);
+  }
  }finally{await browser?.close();await new Promise(r=>server.close(r))}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;server.close()});
