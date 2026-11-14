@@ -1,0 +1,95 @@
+name: Build MPOL Desktop Electron EXE (Windows x64)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/electron-desktop-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  desktop-exe:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install pinned Electron and electron-builder
+        working-directory: desktop
+        run: |
+          npm install --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+
+      - name: Validate main process and security tests
+        working-directory: desktop
+        run: |
+          npm run lint
+          if ($LASTEXITCODE -ne 0) { throw "Electron code syntax check failed" }
+          npm test
+          if ($LASTEXITCODE -ne 0) { throw "Electron security tests failed" }
+
+      - name: Verify shared MPOL icons and application icon
+        run: |
+          $icons = @("messages.webp", "friends.webp", "requests.webp", "search.webp")
+          foreach ($icon in $icons) {
+            $path = Join-Path "client/ui/icons" $icon
+            if (!(Test-Path $path)) { throw "Missing original MPOL nav icon: $path" }
+            if ((Get-Item $path).Length -lt 100) { throw "MPOL nav icon is empty: $path" }
+          }
+          if (!(Test-Path "MpolMessenger.ico")) { throw "Missing application ICO" }
+
+      - name: Compile single-file native Windows app
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          npm run dist:win
+          if ($LASTEXITCODE -ne 0) { throw "electron-builder failed" }
+          if (!(Test-Path "dist/MpolMessenger.exe")) { throw "Portable MPOL EXE missing" }
+          $binary = (Get-Item "dist/MpolMessenger.exe")
+          if ($binary.Length -lt 40000000) { throw "Portable binary is too small: $($binary.Length)" }
+          $stream = [System.IO.File]::OpenRead($binary.FullName)
+          try { 
+            if ($stream.ReadByte() -ne 77 -or $stream.ReadByte() -ne 90) { throw "Invalid EXE PE header" }
+          } finally { $stream.Dispose() }
+          $hash = (Get-FileHash "dist/MpolMessenger.exe" -Algorithm SHA256).Hash
+          Write-Host "Portable Electron EXE compiled: $($binary.Length) bytes"
+          Write-Host "SHA256: $hash"
+
+      - name: Upload EXE as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MPOL-Messenger-Electron-2.3.0-x64
+          path: desktop/dist/MpolMessenger.exe
+          if-no-files-found: error
+
+      - name: Publish verified Electron desktop release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "v2.3.0-desktop"
+          $asset = "desktop/dist/MpolMessenger.exe"
+          $title = "MPOL Messenger Desktop 2.3.0 — Separate Windows App (Electron)"
+          $notes = "Real standalone Windows x64 EXE: Electron 45.3.2 bundles its own Chromium; no Microsoft Edge application window. Uses the current MPOL online server and existing Neon accounts/chats. The original four glossy icons are loaded from the hosted MPOL UI. Includes native media permission dialogs, Windows notifications, F11 and safe file downloads. Unsigned prerelease; Windows SmartScreen may warn. WebRTC still needs a TURN relay for some networks; media quality is not guaranteed."
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $asset --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $tag $asset --title $title --notes $notes --prerelease --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
+          }
+          if ($LASTEXITCODE -ne 0) { throw "GitHub Electron EXE release failed" }
