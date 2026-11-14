@@ -17,7 +17,7 @@ def run():
         os.environ["MPOL_UPLOAD_DIR"] = str(root / "uploads")
         os.environ.pop("MPOL_REQUIRE_PERSISTENT_DB", None)
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
-        from app import app
+        from app import app, engine
 
         with TestClient(app) as client:
             def register(login):
@@ -68,6 +68,8 @@ def run():
             assert [x["id"] for x in client.get("/api/friends", headers=bob_headers).json()] == [alice_id]
             assert client.get("/api/friends/requests", headers=bob_headers).json() == []
             print("PASS: friend request delivered over WebSocket without re-login; accepted friendship persisted.")
+        # Windows keeps the SQLite file locked while SQLAlchemy connections remain pooled.
+        engine.dispose()
 
 
 if __name__ == "__main__":
