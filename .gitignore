@@ -6,3 +6,7 @@ __pycache__/
 *.db-*
 uploads/
 client/*.exe
+
+# Private coturn config (contains TURN shared secret)
+relay/turnserver.conf
+relay/.env
