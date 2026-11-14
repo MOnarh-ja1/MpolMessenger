@@ -1,0 +1,20 @@
+# Copy to turnserver.conf, replace all placeholders and keep it secret.
+# Domain DNS must point to the public IP of this VPS.
+listening-ip=0.0.0.0
+listening-port=3478
+tls-listening-port=5349
+realm=relay.example.com
+fingerprint
+lt-cred-mech
+use-auth-secret
+static-auth-secret=REPLACE_WITH_A_LONG_RANDOM_SECRET
+# Use valid certificates for relay.example.com for secure TURN over TLS:
+cert=/etc/letsencrypt/live/relay.example.com/fullchain.pem
+pkey=/etc/letsencrypt/live/relay.example.com/privkey.pem
+min-port=49160
+max-port=49250
+no-cli
+no-multicast-peers
+no-loopback-peers
+# External-IP may be required if VPS itself is behind NAT:
+# external-ip=PUBLIC_IP/PRIVATE_IP
