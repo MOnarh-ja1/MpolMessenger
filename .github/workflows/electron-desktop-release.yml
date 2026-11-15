@@ -81,9 +81,9 @@ jobs:
           $exe = (Resolve-Path "dist/MpolMessengerSetup.exe").Path
           $proc = Start-Process -FilePath $exe -ArgumentList "/S" -Wait -PassThru
           if ($proc.ExitCode -ne 0) { throw "NSIS installer exit code $($proc.ExitCode)" }
-          $home = Join-Path $env:LOCALAPPDATA "Programs"
-          $installed = Get-ChildItem -Path $home -Recurse -Filter "Mpol Messenger.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (!$installed) { throw "No permanent installed MPOL application at $home" }
+          $installRoot = Join-Path $env:LOCALAPPDATA "Programs"
+          $installed = Get-ChildItem -Path $installRoot -Recurse -Filter "Mpol Messenger.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (!$installed) { throw "No permanent installed MPOL application at $installRoot" }
           $start = [Environment]::GetFolderPath("Programs")
           $shortcuts = Get-ChildItem -Path $start -Recurse -Filter "*.lnk" -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -like "*Mpol*" }
