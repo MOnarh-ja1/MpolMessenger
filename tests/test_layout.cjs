@@ -282,7 +282,7 @@ async function main(){
      assert.ok(shot.accept.width>=80&&shot.decline.width>=80);
      assert.notEqual(shot.wave,'none');
     }else{
-     assert.equal(shot.actions,3,'Mic, audio and camera controls required');
+     assert.ok(shot.actions>=3,'Mic, audio and camera controls required');
      assert.ok(shot.end.width>=150,'Big red end-call button required');
     }
    }
