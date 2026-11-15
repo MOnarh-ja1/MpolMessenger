@@ -75,3 +75,28 @@ test('Russian PaaS Docker image includes the phone website and persisted backend
  assert.match(desktop,/isSettingsPage\(event\.senderFrame/);
  assert.match(desktop,/Ctrl|input\.control/);
 });
+
+test('Windows installer creates permanent shortcuts and recovery page uses guarded IPC',()=>{
+ const fs=require('node:fs');
+ const path=require('node:path');
+ const root=path.resolve(__dirname,'..');
+ const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
+ assert.equal(pkg.version,'3.2.0');
+ assert.equal(pkg.build.nsis.oneClick,false);
+ assert.equal(pkg.build.nsis.perMachine,false);
+ assert.equal(pkg.build.nsis.createStartMenuShortcut,true);
+ assert.equal(pkg.build.nsis.createDesktopShortcut,true);
+ assert.ok(pkg.build.win.target.some(t=>t.target==='nsis'));
+ assert.ok(pkg.build.win.target.some(t=>t.target==='portable'));
+ assert.ok(pkg.build.files.includes('offline.js'),'recovery script must be shipped inside EXE');
+ const offline=fs.readFileSync(path.join(root,'offline.html'),'utf8');
+ assert.match(offline,/<button id="retry"/);
+ assert.match(offline,/<button id="settings"/);
+ assert.doesNotMatch(offline,/href="mpol:\/\//,
+  'An unregistered custom URL scheme causes a startup recovery error');
+ const main=fs.readFileSync(path.join(root,'main.cjs'),'utf8');
+ assert.match(main,/isLocalRecoveryPage\(event\.senderFrame/);
+ assert.match(main,/isOfflinePage\(event\.senderFrame/);
+ const preload=fs.readFileSync(path.join(root,'preload.cjs'),'utf8');
+ assert.match(preload,/endsWith\('\/offline\.html'\)/);
+});

@@ -24,16 +24,21 @@ function releaseFromList(list,current){
   if(release.draft)return null;
   const m=RELEASE_TAG.exec(release.tag_name||'');
   if(!m||!isNewer(m[1],current))return null;
-  const asset=(release.assets||[]).find(a=>a.name==='MpolMessenger.exe');
+  // Prefer a real Windows installer: pinning the temporary Electron executable
+  // extracted by an NSIS portable build creates broken taskbar shortcuts.
+  // Older releases remain downloadable, but their portable EXE is fallback only.
+  const asset=(release.assets||[]).find(a=>a.name==='MpolMessengerSetup.exe')||
+    (release.assets||[]).find(a=>a.name==='MpolMessenger.exe');
   if(!asset?.browser_download_url)return null;
   const url=new URL(asset.browser_download_url);
   if(url.protocol!=='https:'||url.hostname!==DOWNLOAD_HOST||
-    url.pathname!==`/MOnarh-ja1/MpolMessenger/releases/download/${release.tag_name}/MpolMessenger.exe`)return null;
+    url.pathname!==`/MOnarh-ja1/MpolMessenger/releases/download/${release.tag_name}/${asset.name}`)return null;
   // Download only files with GitHub's signed release metadata + SHA-256 digest.
   const digest=/^sha256:([0-9a-f]{64})$/i.exec(asset.digest||'');
   const size=Number(asset.size);
   if(!digest||!Number.isSafeInteger(size)||size<40_000_000||size>500_000_000)return null;
-  return {version:m[1],url:url.toString(),sha256:digest[1].toLowerCase(),size};
+  return {version:m[1],url:url.toString(),sha256:digest[1].toLowerCase(),
+    size,kind:asset.name==='MpolMessengerSetup.exe'?'installer':'portable'};
  }).filter(Boolean);
  return matches.sort((a,b)=>isNewer(a.version,b.version)?-1:1)[0]||null;
 }
@@ -103,12 +108,16 @@ async function offerDesktopUpdate(win,current){
   const choice=await dialog.showMessageBox(win,{
    type:'info',title:'Обновление MPOL Messenger',
    message:'Доступна версия '+update.version+' ('+Math.round(update.size/1048576)+' МБ)',
-   detail:'Обновление загрузится внутри приложения, с отображением прогресса и проверкой SHA-256. Аккаунты и сообщения сохраняются. После загрузки закройте старый EXE и запустите скачанный.',
-   buttons:['Скачать внутри MPOL','Позже'],
+   detail:update.kind==='installer'?
+    'Загрузится полноценный установщик Windows, который создаст постоянную программу и правильные ярлыки. Прогресс и проверка SHA-256 включены. Аккаунты и переписки остаются на сервере.':
+    'Для этой старой версии доступен только переносной EXE. Не закрепляйте запущенный временный процесс на панели задач; предпочтительнее установить новую версию из GitHub.',
+   buttons:[update.kind==='installer'?'Скачать установщик':'Скачать EXE','Позже'],
    defaultId:0,cancelId:1,noLink:true
   });
   if(choice.response!==0||win.isDestroyed())return;
-  const suggested=path.join(app.getPath('downloads'),'MpolMessenger-'+update.version+'.exe');
+  const suggested=path.join(app.getPath('downloads'),
+    update.kind==='installer'?'MpolMessengerSetup-'+update.version+'.exe':
+      'MpolMessenger-'+update.version+'.exe');
   const result=await dialog.showSaveDialog(win,{
    title:'Куда сохранить новую версию MPOL',
    defaultPath:suggested,
@@ -122,10 +131,24 @@ async function offerDesktopUpdate(win,current){
    const success=await dialog.showMessageBox(win,{
     type:'info',title:'MPOL · Обновление скачано',
     message:'MPOL Messenger '+update.version+' загружен и проверен',
-    detail:'Файл: '+target+'\nЗакройте текущий Mpol Messenger и запустите новую версию.',
-    buttons:['Показать файл','Готово'],defaultId:0,cancelId:1
+    detail:update.kind==='installer'?
+      'Файл: '+target+'\nУстановщик создаст постоянную папку приложения и ярлыки. Старый закреплённый значок переносной версии нужно открепить.':
+      'Файл: '+target+'\nЗакройте старую версию и запустите новый файл.',
+    buttons:update.kind==='installer'?
+      ['Запустить установщик','Показать файл','Позже']:
+      ['Показать файл','Готово'],
+    defaultId:0,cancelId:update.kind==='installer'?2:1
    });
-   if(success.response===0)shell.showItemInFolder(target);
+   if(update.kind==='installer'&&success.response===0){
+    const error=await shell.openPath(target);
+    if(error)await dialog.showMessageBox(win,{
+      type:'error',title:'Не удалось запустить установщик MPOL',
+      message:error,buttons:['Закрыть']
+    });
+    else app.quit();
+   }else if(success.response===(update.kind==='installer'?1:0)){
+    shell.showItemInFolder(target);
+   }
   }catch(error){
    if(win.isDestroyed())return;
    await dialog.showMessageBox(win,{type:'error',title:'MPOL · Ошибка загрузки',

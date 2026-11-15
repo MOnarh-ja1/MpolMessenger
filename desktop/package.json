@@ -1,7 +1,7 @@
 {
   "name": "mpol-messenger-desktop",
   "productName": "Mpol Messenger",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Native Windows desktop client for existing MPOL Messenger online accounts",
   "main": "main.cjs",
   "private": true,
@@ -9,8 +9,8 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test tests/*.test.cjs",
-    "lint": "node --check main.cjs && node --check lib/security.cjs && node --check lib/updater.cjs && node --check preload.cjs && node --check server-settings.js",
-    "dist:win": "electron-builder --win portable --x64 --publish never"
+    "lint": "node --check main.cjs && node --check lib/security.cjs && node --check lib/updater.cjs && node --check preload.cjs && node --check server-settings.js && node --check offline.js",
+    "dist:win": "electron-builder --win nsis portable --x64 --publish never"
   },
   "devDependencies": {
     "electron": "45.3.2",
@@ -30,7 +30,8 @@
       "server-settings.js",
       "offline.html",
       "lib/**/*",
-      "package.json"
+      "package.json",
+      "offline.js"
     ],
     "extraResources": [
       {
@@ -43,6 +44,12 @@
     "win": {
       "icon": "../MpolMessenger.ico",
       "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
         {
           "target": "portable",
           "arch": [
@@ -57,6 +64,19 @@
       "artifactName": "MpolMessenger.exe",
       "requestExecutionLevel": "user"
     },
-    "publish": null
+    "publish": null,
+    "nsis": {
+      "artifactName": "MpolMessengerSetup.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mpol Messenger",
+      "uninstallDisplayName": "Mpol Messenger",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

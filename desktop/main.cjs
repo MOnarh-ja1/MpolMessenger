@@ -6,7 +6,7 @@ const { pathToFileURL } = require('node:url');
 const { SERVER_ORIGIN, normalizeServerOrigin, isMpolUrl, canOpenExternal,
   safeFilename, normalizeMediaTypes } = require('./lib/security.cjs');
 
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.2.0';
 const { offerDesktopUpdate } = require('./lib/updater.cjs');
 let activeServerOrigin=SERVER_ORIGIN;
 const isTrustedUrl=url=>isMpolUrl(url,activeServerOrigin);
@@ -36,14 +36,25 @@ function retryServer(win){
 function isSettingsPage(url){
  return url===pathToFileURL(path.join(__dirname,'server-settings.html')).href;
 }
+function isOfflinePage(url){
+ return url===pathToFileURL(path.join(__dirname,'offline.html')).href;
+}
+function isLocalRecoveryPage(url){
+ return isSettingsPage(url)||isOfflinePage(url);
+}
 function installServerSettingsIpc(){
  ipcMain.handle('mpol:current-server',event=>{
   if(!isSettingsPage(event.senderFrame?.url||''))throw Error('Unauthorized server settings');
   return {current:activeServerOrigin,defaultOrigin:SERVER_ORIGIN};
  });
  ipcMain.handle('mpol:retry-server',event=>{
-  if(!isSettingsPage(event.senderFrame?.url||''))throw Error('Unauthorized server retry');
+  if(!isLocalRecoveryPage(event.senderFrame?.url||''))throw Error('Unauthorized server retry');
   retryServer(BrowserWindow.fromWebContents(event.sender));
+  return {ok:true};
+ });
+ ipcMain.handle('mpol:open-settings',event=>{
+  if(!isOfflinePage(event.senderFrame?.url||''))throw Error('Unauthorized settings navigation');
+  openServerSettings(BrowserWindow.fromWebContents(event.sender));
   return {ok:true};
  });
  ipcMain.handle('mpol:select-server',async(event,raw)=>{

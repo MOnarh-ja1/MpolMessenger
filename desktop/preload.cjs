@@ -9,3 +9,10 @@ if(location.protocol==='file:' && decodeURIComponent(location.pathname).endsWith
   retry:()=>ipcRenderer.invoke('mpol:retry-server')
  });
 }
+
+if(location.protocol==='file:' && decodeURIComponent(location.pathname).endsWith('/offline.html')){
+ contextBridge.exposeInMainWorld('mpolRecovery',{
+  retry:()=>ipcRenderer.invoke('mpol:retry-server'),
+  settings:()=>ipcRenderer.invoke('mpol:open-settings')
+ });
+}
