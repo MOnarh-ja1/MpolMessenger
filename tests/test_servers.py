@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 def run():
-    with tempfile.TemporaryDirectory() as temp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         os.environ['MPOL_DATABASE_URL']='sqlite:///'+str(Path(temp)/'servers.db')
         os.environ['MPOL_UPLOAD_DIR']=str(Path(temp)/'uploads')
         os.environ.pop('MPOL_REQUIRE_PERSISTENT_DB',None)
@@ -72,6 +72,9 @@ def run():
                 with client.websocket_connect('/ws') as wb:
                     wb.send_json({'type':'auth','token':bt})
                     assert wb.receive_json()['type']=='authenticated'
+                    # User B's presence event is delivered to friend A immediately.
+                    presence=wa.receive_json()
+                    assert presence['type']=='presence',presence
                     wa.send_json({'type':'space_voice_join','channel_id':voice})
                     joined_a=wa.receive_json()
                     assert joined_a['type']=='space_voice_joined'
