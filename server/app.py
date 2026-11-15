@@ -167,6 +167,9 @@ class ProfilePhoto(Base):
     mime_type: Mapped[str] = mapped_column(String(30))
     data: Mapped[bytes] = mapped_column(LargeBinary)
 
+from server_spaces import make_space_models, install_space_routes
+Space, SpaceMember, SpaceChannel, SpaceBan = make_space_models(Base)
+
 Base.metadata.create_all(engine)
 
 class Register(BaseModel):
@@ -1002,6 +1005,15 @@ async def websocket(ws:WebSocket):
                 with SessionLocal() as d:
                     if isinstance(cid,str) and d.scalar(select(Member).where(Member.chat_id==cid,Member.user_id==uid)):
                         await emit([x for x in members_of(d,cid) if x!=uid],{'type':'typing','chat_id':cid,'user_id':uid})
+            if event.get('type')=='space_voice_join':
+                await space_voice.join(ws,uid,event.get('channel_id'))
+                continue
+            if event.get('type')=='space_voice_leave':
+                await space_voice.leave(ws)
+                continue
+            if event.get('type')=='space_voice_signal':
+                await space_voice.signal(ws,uid,event)
+                continue
             if event.get('type')=='call_signal':
                 to=event.get('to')
                 kind=event.get('kind')
@@ -1025,6 +1037,7 @@ async def websocket(ws:WebSocket):
                          'kind':kind,'call_id':cid,'payload':payload})
     except (WebSocketDisconnect, asyncio.TimeoutError,ValueError,RuntimeError):pass
     finally:
+        await space_voice.leave(ws)
         if uid:
             sockets[uid].discard(ws)
             if not sockets[uid]:
@@ -1032,6 +1045,12 @@ async def websocket(ws:WebSocket):
                     fs=d.scalars(select(Friendship).where(Friendship.state=='accepted',((Friendship.from_id==uid)|(Friendship.to_id==uid)))).all()
                     friends=[f.to_id if f.from_id==uid else f.from_id for f in fs]
                 await emit(friends,{'type':'presence','user_id':uid,'online':False})
+
+# Mount server/community APIs before StaticFiles catches all paths.
+app.state.authed=authed
+app.state.db=db
+space_voice=install_space_routes(app,SessionLocal,Base,Space,SpaceMember,SpaceChannel,
+    SpaceBan,User,Chat,Member,is_friend,blocked,moderation_state,emit,user_json)
 
 # Serve the same MPOL interface in a normal browser as well as the Windows client.
 UI_DIR = ROOT.parent / "client" / "ui"
