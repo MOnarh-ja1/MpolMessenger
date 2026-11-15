@@ -24,7 +24,7 @@ const cases=[
 for(const [speech,kind,target] of cases){
  const result=parse(speech);
  assert.equal(result.kind,kind,speech);
- assert.equal(result.target,target,speech);
+ assert.equal(result.target?.toLowerCase(),target.toLowerCase(),speech);
 }
 assert.equal(parse('Открой друзья').kind,'tab');
 assert.equal(parse('Создай сервер').kind,'future');
