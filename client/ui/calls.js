@@ -4,6 +4,7 @@
 let currentCall=null;
 let callTick=null;
 let callSoundInterval=null,callAudioContext=null;
+let preferredVideoMirror=localStorage.getItem('mpol_video_mirror')==='1';
 // Browser noise suppression / automatic gain can gate quiet syllables on some PCs.
 // Start with unprocessed speech and allow the listener to enable suppression.
 let callNoiseEnabled=localStorage.getItem('mpol_call_denoise')!=='0';
@@ -36,7 +37,7 @@ async function measureCallQuality(){
    quality.classList.add('warning');
   }else{
    const cameraInfo=c.mode==='video'&&videoWidth&&videoHeight?
-    ' · камера '+videoWidth+'×'+videoHeight+(videoFps?' · '+Math.round(videoFps)+' FPS':''):'';
+    ' · '+(c.screen?'экран ':'видео ')+videoWidth+'×'+videoHeight+(videoFps?' · '+Math.round(videoFps)+' FPS':''):'';
    quality.textContent='Аудиоканал подключён · '+Math.round(lost/total*100)+'% потерь'+cameraInfo;
    quality.classList.remove('warning');
   }
@@ -121,27 +122,21 @@ function startCallWatchdog(c){
   tryRecoverCall(c);
  },16000);
 }
-function callTone(freq){
- if(!state.sound)return;
- try{
-  const AudioCtx=window.AudioContext||window.webkitAudioContext;if(!AudioCtx)return;
-  if(!callAudioContext)callAudioContext=new AudioCtx();
-  callAudioContext.resume().catch(()=>{});
-  const t=callAudioContext.currentTime,g=callAudioContext.createGain(),o=callAudioContext.createOscillator();
-  o.frequency.value=freq;o.type='sine';
-  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.02,t+0.015);
-  g.gain.exponentialRampToValueAtTime(0.0001,t+0.18);
-  o.connect(g);g.connect(callAudioContext.destination);o.start(t);o.stop(t+0.19);
- }catch{}
+function stopCallRingtone(){
+ if(callSoundInterval)clearInterval(callSoundInterval);
+ callSoundInterval=null;
+ window.mpolSound?.stop('incoming');
+ window.mpolSound?.stop('outgoing');
 }
-function stopCallRingtone(){if(callSoundInterval)clearInterval(callSoundInterval);callSoundInterval=null}
 function startCallRingtone(incoming){
  stopCallRingtone();
- const sound=()=>{if(!currentCall||currentCall.started){stopCallRingtone();return}
-  callTone(incoming?750:450);
-  if(incoming)setTimeout(()=>{if(currentCall?.incoming)callTone(660)},230);
+ const c=currentCall,kind=incoming?'incoming':'outgoing';
+ const sound=()=>{
+  if(currentCall!==c||c.started){stopCallRingtone();return}
+  window.mpolSound?.play(kind);
  };
- sound();callSoundInterval=setInterval(sound,incoming?2400:2900);
+ sound();
+ callSoundInterval=setInterval(sound,incoming?3300:2200);
 }
 async function recoverMicrophone(){
  const c=currentCall;if(!c||!c.pc||c.recovering)return;
@@ -208,6 +203,16 @@ function updateCallButtons(c){
  share.setAttribute('aria-pressed',String(!!c?.screen));
  share.title=c?.screen?'Остановить демонстрацию экрана':
   share.disabled?'Дождитесь подключения для демонстрации':'Демонстрировать экран или окно';
+ share.setAttribute('aria-label',share.title);
+ const stop=$call('stopShareScreen');
+ stop.classList.toggle('hidden',!c?.screen);
+ stop.disabled=!c?.screen;
+ const mirror=$call('mirrorCamera');
+ mirror.setAttribute('aria-pressed',String(!!c?.mirrorCamera));
+ mirror.disabled=c?.mode!=='video';
+ const flip=$call('switchCamera');
+ flip.disabled=c?.mode!=='video'||!c?.stream;
+ $call('localVideo').classList.toggle('camera-mirrored',!!c?.mirrorCamera&&!c?.screen);
  camera.setAttribute('aria-pressed',String(c?.mode==='video'&&!cameraOn));
  camera.title=c?.mode!=='video'?
   'Камера доступна только в видеозвонке':
@@ -248,12 +253,13 @@ function callLayout(){
  $call('callQuality').textContent='Ожидаем аудиосоединение…';
  $call('callQuality').classList.remove('warning');
  $call('noiseSuppression').checked=callNoiseEnabled;
+ c.mirrorCamera=preferredVideoMirror;
  $call('callExtra').open=false;
  updateCallButtons(c);
 }
 async function getLocalCallMedia(mode){
  if(!navigator.mediaDevices?.getUserMedia)throw Error('Микрофон/камера недоступны. Нужен HTTPS и разрешение пользователя.');
- const video=mode==='video'?{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:24,max:30}}:false;
+ const video=mode==='video'?{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}}:false;
  try{return await navigator.mediaDevices.getUserMedia({audio:callAudioConstraints(),video})}
  catch(e){
   const recoverable=['OverconstrainedError','NotFoundError','NotAllowedError','TypeError','NotReadableError','AbortError'];
@@ -274,7 +280,7 @@ async function beginCall(mode){
  prepareCallAudioFromGesture();
  let stream;try{stream=await getLocalCallMedia(mode)}catch(e){return toast('Не удалось получить доступ к устройствам: '+e.message)}
  currentCall={id:crypto.randomUUID(),peer:c.peer_id,nick:c.name,mode,incoming:false,isCaller:true,stream,
-  pc:null,ice:[],started:0,screen:null,remoteStream:null,restarts:0};
+  pc:null,ice:[],started:0,screen:null,remoteStream:null,restarts:0,mirrorCamera:preferredVideoMirror};
  const outgoing=currentCall;
  callLayout();$call('localVideo').srcObject=stream;
  $call('localVideo').classList.toggle('hidden',mode!=='video'||!stream.getVideoTracks().length);
@@ -404,7 +410,7 @@ async function onCallSignal(m){
  if(kind==='invite'){
   if(currentCall){if(state.ws?.readyState===WebSocket.OPEN)state.ws.send(JSON.stringify({type:'call_signal',to:from,call_id:id,kind:'busy'}));return}
   const mode=m.payload?.mode==='video'?'video':'audio';
-  currentCall={id,peer:from,nick:m.nick||'Пользователь',mode,incoming:true,isCaller:false,stream:null,pc:null,ice:[],started:0,screen:null,remoteStream:null,restarts:0};
+  currentCall={id,peer:from,nick:m.nick||'Пользователь',mode,incoming:true,isCaller:false,stream:null,pc:null,ice:[],started:0,screen:null,remoteStream:null,restarts:0,mirrorCamera:preferredVideoMirror};
   callLayout();startCallRingtone(true);
   if(state.notif&&'Notification'in window&&Notification.permission==='granted'&&document.hidden){
    try{const n=new Notification('MPOL · '+(mode==='video'?'видеозвонок':'входящий звонок'),
