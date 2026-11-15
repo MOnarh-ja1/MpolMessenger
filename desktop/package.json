@@ -1,7 +1,7 @@
 {
   "name": "mpol-messenger-desktop",
   "productName": "Mpol Messenger",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "description": "Native Windows desktop client for existing MPOL Messenger online accounts",
   "main": "main.cjs",
   "private": true,

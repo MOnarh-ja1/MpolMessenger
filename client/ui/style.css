@@ -725,3 +725,36 @@ img{-webkit-user-drag:none;user-drag:none}
  .call-wave i,.call-orbit-spinner,.call-connecting-dots i{animation:none}
  .call-orbit-spinner{border-color:#777781;border-top-color:#fff}
 }
+
+/* MPOL 3.5: show the camera preview during connection and make sharing a
+   first-class, keyboard-accessible control instead of a hidden settings item. */
+.call-card[data-mode="video"]:not([data-stage="incoming"]) .call-video-area{
+ display:block;width:min(460px,100%);margin:12px auto 0;
+}
+.call-card[data-mode="video"]:not([data-stage="incoming"]) .call-visual{display:none}
+.call-video-area{isolation:isolate}
+.call-video-placeholder{
+ position:absolute;inset:0;z-index:0;display:grid;place-items:center;
+ padding:18px;color:#aeb2c2;font-size:13px;letter-spacing:.1px;
+ background:radial-gradient(ellipse at center,#1c2029,#090a0e 78%);
+}
+.call-card .call-video-area #remoteVideo{
+ position:relative;z-index:1;opacity:0;
+ transition:opacity .18s ease;
+}
+.call-card .call-video-area.has-remote-video #remoteVideo{opacity:1}
+.call-card .call-video-area #localVideo{z-index:3}
+.call-card #shareScreen[aria-pressed="true"]{
+ border-color:#b1b9cb;background:linear-gradient(145deg,#414b5f,#0e141d);
+ box-shadow:inset 0 2px 4px #ffffff44,0 0 22px #bdcffa4b;
+}
+.call-card #shareScreen:disabled{opacity:.48;cursor:not-allowed}
+.call-card[data-mode="video"] .call-tools-row{gap:clamp(10px,2.6vw,25px)}
+@media(max-width:600px){
+ .call-card[data-mode="video"] .call-tools-row{gap:clamp(7px,2vw,12px)}
+ .call-card[data-mode="video"] .call-tool-button{width:clamp(56px,15vw,65px);height:clamp(56px,15vw,65px)}
+ .call-card[data-mode="video"] .call-video-area{width:min(410px,100%);max-height:27dvh}
+}
+@media(max-height:650px){
+ .call-card[data-mode="video"] .call-video-area{max-height:26dvh}
+}

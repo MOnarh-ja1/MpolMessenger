@@ -44,6 +44,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Electron code syntax check failed" }
           npm test
           if ($LASTEXITCODE -ne 0) { throw "Electron security tests failed" }
+          node --check ../client/ui/calls.js
+          if ($LASTEXITCODE -ne 0) { throw "Call frontend syntax validation failed" }
+          Push-Location ..
+          node tests/test_call_audio.cjs
+          node tests/test_video_calls.cjs
+          if ($LASTEXITCODE -ne 0) { throw "WebRTC call regression tests failed" }
+          Pop-Location
 
       - name: Verify shared MPOL icons and application icon
         run: |
@@ -100,7 +107,7 @@ jobs:
       - name: Upload EXE as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MPOL-Messenger-Electron-3.4.0-x64
+          name: MPOL-Messenger-Electron-3.5.0-x64
           path: |
             desktop/dist/MpolMessengerSetup.exe
             desktop/dist/MpolMessenger.exe
@@ -111,10 +118,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v3.4.0-desktop"
+          $tag = "v3.5.0-desktop"
           $assets = @("desktop/dist/MpolMessengerSetup.exe","desktop/dist/MpolMessenger.exe")
-          $title = "MPOL Messenger Desktop 3.4.0 — Stable Windows Installer + Portable"
-          $notes = "MPOL 3.4.0 Windows x64: responsive glossy graphite call overlays based on the two supplied image references. Incoming shows white glowing phone, animated bars and real accept/red-decline actions; outgoing shows animated connecting ring/dots, microphone, audio volume mute and red hang-up; on WebRTC connection switches to timer and remote video for video calls. No nicknames/avatars on call screens. Camera button is only active for video calls, and browser speaker control mutes incoming audio rather than changing physical audio output. Same persistent verified Setup EXE and portable builds. HTML updates on iPhone after server deployment."
+          $title = "MPOL Messenger Desktop 3.5.0 — Camera, Screen Share and WebRTC Recovery"
+          $notes = "MPOL 3.5.0 Windows x64: remote video placeholder and immediate local camera preview while connecting, camera fallback with later re-enable, screen sharing button on the call toolbar with explicit Windows source picker and stop/restore action, debounced ICE recovery to avoid unnecessary renegotiation. Uses the current STUN/TURN setup; shared public TURN is best-effort and may still be overloaded. Updated Setup EXE and portable builds. Accounts and chats remain unchanged."
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
