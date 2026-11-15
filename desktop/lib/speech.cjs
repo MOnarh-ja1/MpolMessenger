@@ -77,7 +77,12 @@ function startOfflineRecognition({platform=process.platform,spawnProcess=spawn,
    const last=output.split(/\r?\n/).filter(Boolean).pop()||'';
    let result;try{result=JSON.parse(last)}catch{}
    if(result?.ok && typeof result.text==='string' && result.text.trim()){
-    complete({ok:true,text:result.text.trim().slice(0,160),engine:'offline'});
+    complete({
+     ok:true,text:result.text.trim().slice(0,160),
+     alternatives:Array.isArray(result.alternatives)?
+      result.alternatives.filter(x=>typeof x==='string').slice(0,6).map(x=>x.slice(0,160)):[],
+     engine:'offline'
+    });
    }else if(result?.ok===false){
     complete({ok:false,code:String(result.code||'engine'),
      message:String(result.message||'Не удалось распознать голос.').slice(0,260)});
