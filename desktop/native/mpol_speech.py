@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 def emit(ok, **fields):
-    sys.stdout.write(json.dumps({"ok": ok, **fields}, ensure_ascii=False) + "\n")
+    sys.stdout.write(json.dumps({"ok": ok, **fields}, ensure_ascii=True) + "\n")
     sys.stdout.flush()
 
 
