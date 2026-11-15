@@ -27,6 +27,23 @@ const release=(version='2.6.0')=>({tag_name:'v'+version+'-desktop',assets:[{
 const chosen=releaseFromList([release('2.5.0'),release('2.6.0')],'2.5.0');
 assert.equal(chosen.version,'2.6.0');
 assert.equal(chosen.sha256,digest);
+assert.equal(chosen.kind,'portable');
+// New updates should prefer the actual Windows installer over a portable
+// binary that runs inside a temporary extraction directory.
+const installer={
+ name:'MpolMessengerSetup.exe',size:120_000_000,
+ digest:'sha256:'+digest,
+ browser_download_url:'https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v3.2.0-desktop/MpolMessengerSetup.exe'
+};
+const both=release('3.2.0');both.assets.push(installer);
+const preferred=releaseFromList([release('3.1.0'),both],'3.1.0');
+assert.equal(preferred.version,'3.2.0');
+assert.equal(preferred.kind,'installer');
+assert.equal(preferred.url,installer.browser_download_url);
+assert.equal(releaseFromList([{
+ ...both,assets:[{...installer,browser_download_url:'https://evil.example/install.exe'}]
+}],'3.1.0'),null);
+
 assert.equal(releaseFromList([{...release(),assets:[{...release().assets[0],digest:''}]}],'2.5.0'),null);
 assert.equal(releaseFromList([{...release(),assets:[{...release().assets[0],
  browser_download_url:'https://example.com/untrusted.exe'}]}],'2.5.0'),null);
@@ -51,6 +68,6 @@ class FakeWindow extends EventEmitter{
     path.join(dir,'corrupt.exe')),/SHA-256/);
   assert.equal(fs.existsSync(path.join(dir,'corrupt.exe')),false);
   assert.equal(fs.existsSync(path.join(dir,'corrupt.exe.mpol.part')),false);
-  console.log('PASS: release digest verification, streaming, progress reset, corruption cleanup');
+  console.log('PASS: release digest verification, installer preference, streaming, progress reset, corruption cleanup');
  }finally{await fsp.rm(dir,{recursive:true,force:true})}
 })().catch(err=>{console.error(err);process.exitCode=1});
