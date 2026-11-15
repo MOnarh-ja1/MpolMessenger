@@ -158,7 +158,7 @@ jobs:
       - name: Upload EXE as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MPOL-Messenger-Electron-3.8.0-x64
+          name: MPOL-Messenger-Electron-3.8.1-x64
           path: |
             desktop/dist/MpolMessengerSetup.exe
             desktop/dist/MpolMessenger.exe
@@ -169,10 +169,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v3.8.0-desktop"
+          $tag = "v3.8.1-desktop"
           $assets = @("desktop/dist/MpolMessengerSetup.exe","desktop/dist/MpolMessenger.exe")
-          $title = "MPOL Messenger Desktop 3.8.0 — Gaming Servers and Voice Rooms"
-          $notes = "MPOL 3.8.0 Windows x64: separate graphite Servers icon, persistent gaming communities, invites for friends, server roles (owner, admin, moderator, member), text channels and four-person mesh WebRTC voice rooms with mute, camera, screen share and individual volume. Role checks and signaling are authenticated server-side. No paid API keys; shared public TURN remains best effort and live WebRTC quality is network-dependent. The updated HTML and API must also be deployed on Render for servers to work."
+          $title = "MPOL Messenger Desktop 3.8.1 — Fix Servers in Windows EXE"
+          $notes = "MPOL 3.8.1 Windows x64: fixes hidden Servers panel on narrow/high-DPI windows, adds server switcher and Create Server button, visible error/retry diagnostics with configured host, and restores chat navigation. The MPOL servers API has been verified live on Render. Existing accounts, messages, server roles and voice rooms are retained."
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
