@@ -7,6 +7,7 @@ const { SERVER_ORIGIN, normalizeServerOrigin, isMpolUrl, canOpenExternal,
   safeFilename, normalizeMediaTypes } = require('./lib/security.cjs');
 const {loadPermissionGrants,savePermissionGrants,hasPermission,
   grantPermissions,revokeMediaPermissions}=require('./lib/media-permissions.cjs');
+const {startNativeRecognition}=require('./lib/speech.cjs');
 
 const APP_VERSION = '3.6.0';
 const { offerDesktopUpdate } = require('./lib/updater.cjs');
@@ -83,6 +84,29 @@ function installServerSettingsIpc(){
    if(confirmation.response!==0)return {ok:false,error:'Изменение отменено'};
   }
   saveServerOrigin(origin);activeServerOrigin=origin;retryServer(win);
+  return {ok:true};
+ });
+}
+// Only a deliberate assistant button in a trusted MPOL page can request
+// short-lived native recognition. Never pass recognized text to a shell.
+const activeSpeechByWindow=new Map();
+function installAssistantSpeechIpc(){
+ ipcMain.handle('mpol:speech-recognize',async event=>{
+  if(!isTrustedUrl(event.senderFrame?.url||''))
+   throw Error('Unauthorized MPOL voice recognition');
+  const senderId=event.sender.id;
+  if(activeSpeechByWindow.has(senderId))
+   return {ok:false,code:'busy',message:'Распознавание уже запущено.'};
+  const task=startNativeRecognition();
+  activeSpeechByWindow.set(senderId,task);
+  try{return await task.promise}
+  finally{if(activeSpeechByWindow.get(senderId)===task)activeSpeechByWindow.delete(senderId)}
+ });
+ ipcMain.handle('mpol:speech-cancel',event=>{
+  if(!isTrustedUrl(event.senderFrame?.url||''))
+   throw Error('Unauthorized MPOL speech cancellation');
+  const task=activeSpeechByWindow.get(event.sender.id);
+  if(task){task.cancel();activeSpeechByWindow.delete(event.sender.id)}
   return {ok:true};
  });
 }
@@ -241,7 +265,11 @@ function createWindow() {
   win.once('ready-to-show',()=>{win.show();if(initial.maximized)win.maximize();});
   // Also show a window when the free hosting provider needs extra startup time.
   win.webContents.once('dom-ready',()=>{if(!win.isVisible())win.show();});
-  win.on('close',()=>storeWindowState(win));
+  win.on('close',()=>{
+    storeWindowState(win);
+    const task=activeSpeechByWindow.get(win.webContents.id);
+    if(task){task.cancel();activeSpeechByWindow.delete(win.webContents.id)}
+  });
   win.webContents.setWindowOpenHandler(({url})=>{
     navigateExternal(url);
     return {action:'deny'};
@@ -318,6 +346,7 @@ if (!app.requestSingleInstanceLock()) {
     Menu.setApplicationMenu(null);
     activeServerOrigin=readServerOrigin();
     installServerSettingsIpc();
+    installAssistantSpeechIpc();
     createWindow();
     app.on('activate',()=>{
       if (BrowserWindow.getAllWindows().length===0) createWindow();
