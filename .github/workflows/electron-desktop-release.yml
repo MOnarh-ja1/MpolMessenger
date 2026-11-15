@@ -48,6 +48,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Call frontend syntax validation failed" }
           Push-Location ..
           node tests/test_call_audio.cjs
+          node tests/test_video_calls.cjs
           if ($LASTEXITCODE -ne 0) { throw "WebRTC call regression tests failed" }
           Pop-Location
 
