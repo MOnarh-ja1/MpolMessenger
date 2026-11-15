@@ -63,6 +63,7 @@ class FakePC{
  getTransceivers(){return this.transceivers}
 }
 const audio=new FakeStream([new FakeTrack('audio','mic')]);
+let cameraAllowed=false;
 const camera=new FakeTrack('video','camera');
 const screen=new FakeTrack('video','screen');
 const ctx=vm.createContext({
@@ -71,7 +72,7 @@ const ctx=vm.createContext({
  navigator:{mediaDevices:{
   async getUserMedia(c){
    if(c.video===false)return audio;
-   if(c.video===true||typeof c.video==='object')return new FakeStream([camera]);
+   if((c.video===true||typeof c.video==='object')&&cameraAllowed)return new FakeStream([camera]);
    const error=new Error('Camera absent');error.name='NotFoundError';throw error;
   },
   async getDisplayMedia(){return new FakeStream([screen])}
@@ -98,6 +99,7 @@ vm.runInContext(code,ctx);
  assert.equal(el('stopShareScreen').classList.contains('hidden'),true,'Stop button hides after screen stops');
  assert.equal(el('localVideo').srcObject,null,'Screen preview must stop after clicking stop');
  assert.equal(el('shareScreen').getAttribute('aria-pressed'),'false');
+ cameraAllowed=true;
  await vm.runInContext('toggleCallCamera()',ctx);
  assert.equal(videoSender.track,camera,'Late camera should replace reserved video sender');
  assert.equal(el('localVideo').srcObject,stream);
