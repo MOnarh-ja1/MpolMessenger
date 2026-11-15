@@ -318,8 +318,15 @@ function resumeOnlineConnection(){
  refreshAll().catch(()=>{});
  if(state.active)loadMessages().catch(()=>{});
 }
-function notifyNewMessage(m){if(state.sound){try{const a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.type='sine';o.frequency.value=540;g.gain.value=.03;o.connect(g);g.connect(a.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.15);o.stop(a.currentTime+.15)}catch{}}
- if(state.notif&&'Notification'in window&&Notification.permission==='granted'&&document.hidden){try{const n=new Notification('MPOL · '+m.nick,{body:m.body||'📎 Вложение',tag:'mpol-'+m.chat_id});n.onclick=()=>{window.focus();selectChat(m.chat_id);n.close()}}catch{}}}
+function notifyNewMessage(m){
+ if(state.sound)window.mpolSound?.play('message');
+ if(state.notif&&'Notification'in window&&Notification.permission==='granted'&&document.hidden){
+  try{
+   const n=new Notification('MPOL · '+m.nick,{body:m.body||'📎 Вложение',tag:'mpol-'+m.chat_id});
+   n.onclick=()=>{window.focus();selectChat(m.chat_id);n.close()};
+  }catch{}
+ }
+}
 function modal(title,content){$('modalTitle').textContent=title;$('modalContent').innerHTML=content;$('modalLayer').classList.remove('hidden')}
 function closeModal(){$('modalLayer').classList.add('hidden');$('modalContent').replaceChildren()}
 function findFriends(){modal('Найти пользователя',`<p>Введите уникальный ID, например <strong>MP1234567890</strong>.</p><label>ID пользователя<input id="friendId" placeholder="MP..." maxlength="24"/></label><button class="button" id="findUserBtn">Найти</button><div id="findResult"></div>`);$('findUserBtn').onclick=async()=>{
@@ -469,7 +476,11 @@ function applyScale(){
 function openSettings(){modal('Профиль и настройки',`<div class="profile-hero"><div class="profile-hero-avatar">${state.me.avatar==='📷'?'<img src="/api/avatars/'+encodeURIComponent(state.me.id)+'?t='+Date.now()+'" alt="Аватар">':esc(state.me.avatar||state.me.nick[0])}</div><div class="profile-hero-name"><h3>${esc(state.me.nick)}</h3><p>${esc(state.me.description||'Мой профиль MPOL')}</p>${state.me.is_developer?'<span class="developer-tag">Разработчик</span>':''}</div></div><section class="settings-panel" id="accountDetails"><h3>Мой аккаунт</h3><div class="profile-id-card"><div class="profile-id-caption">МОЙ АККАУНТ · ${esc(state.me.nick)}</div><div class="profile-id-row"><code aria-label="Ваш ID">${esc(state.me.id)}</code><button id="copyProfileId" type="button">Скопировать ID</button></div><p class="secondary">Этот ID можно отправить другу для поиска в MPOL Messenger.</p></div></section><section class="settings-panel"><h3>Редактирование профиля</h3><label>Никнейм<input id="profileNick" value="${esc(state.me.nick)}" maxlength="48"></label><label>О себе<textarea id="profileDescription" maxlength="260" rows="3">${esc(state.me.description||'')}</textarea></label><label>Аватар (символ)<input id="profileAvatar" value="${esc(state.me.avatar)}" maxlength="8"></label>
  <label>Фотография профиля (PNG, JPG или WEBP до 800 КБ)<input id="profilePhoto" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="uploadProfilePhoto" class="button outlined">Загрузить фото профиля</button>
  <label>Сетевой статус<select id="profileStatus"><option value="online">В сети</option><option value="away">Отошёл</option><option value="dnd">Не беспокоить</option><option value="invisible">Невидимка</option></select></label><button class="button" id="saveProfile">Сохранить профиль</button></section><section class="settings-panel"><h3>Уведомления и интерфейс</h3>
- <div class="setting-row">Уведомления Windows <input type="checkbox" id="notificationsOn" ${state.notif?'checked':''}></div><div class="setting-row">Звук сообщений <input type="checkbox" id="soundsOn" ${state.sound?'checked':''}></div><div class="setting-row">Масштаб интерфейса <select id="scaleSelect"><option value="85">85%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select></div>
+ <div class="setting-row">Уведомления Windows <input type="checkbox" id="notificationsOn" ${state.notif?'checked':''}></div><div class="setting-row">Звук сообщений и звонков <input type="checkbox" id="soundsOn" ${state.sound?'checked':''}></div>
+  <div class="setting-row">Громкость мелодий <input type="range" min="0" max="100" value="${esc(localStorage.getItem('mpol_sound_volume')||'85')}" id="soundVolume" aria-label="Громкость уведомлений и звонков"><span id="soundVolumeValue">${esc(localStorage.getItem('mpol_sound_volume')||'85')}%</span></div>
+  <div class="setting-row"><button type="button" class="button outlined" id="previewMessageSound">▶ Проверить сообщение</button><button type="button" class="button outlined" id="previewCallSound">▶ Проверить звонок</button></div>
+  <div class="setting-row" id="devicePermissionsRow" style="display:none"><button type="button" class="button outlined" id="resetDevicePermissions">Сбросить разрешения камеры и микрофона</button></div>
+  <div class="setting-row">Масштаб интерфейса <select id="scaleSelect"><option value="85">85%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select></div>
  </section><section class="settings-panel"><h3>Безопасность</h3><div class="setting-row">Email: ${esc(state.me.email||'не указан')} ${state.me.email_verified?'✓ подтверждён':'(не подтверждён)'}</div>${state.me.email&&!state.me.email_verified?'<button id="verifyEmail" class="button outlined">Подтвердить email</button>':''}<button id="changePassword" class="button outlined">Изменить пароль</button>${state.me.is_developer?'<details class="developer-settings developer-only"><summary>Режим разработчика</summary><p>Доступ защищён проверкой прав на сервере.</p><button id="checkDeveloper" class="button outlined">Проверить права разработчика</button><button id="serverSettings" class="button outlined">Настройка сервера</button></details>':''}</section><button id="logOut" class="button outlined">Выйти из аккаунта</button><p class="secondary">ID можно отправить друзьям для поиска. Пароль и токен никому не передавайте.</p>`);
  $('copyProfileId').onclick=copyAccountId;
  if(isDesktopClient){
@@ -482,6 +493,20 @@ function openSettings(){modal('Профиль и настройки',`<div class
  $('saveProfile').onclick=async()=>{try{state.me=await api('/me',{method:'PATCH',body:{nick:$('profileNick').value,description:$('profileDescription').value,avatar:$('profileAvatar').value,status:$('profileStatus').value}});updateOwnAvatar();toast('Профиль сохранён');closeModal();refreshAll()}catch(e){toast(errorText(e))}};
  $('notificationsOn').onchange=async e=>{if(e.target.checked&&'Notification'in window){const r=await Notification.requestPermission();state.notif=r==='granted';e.target.checked=state.notif}else state.notif=false;localStorage.setItem('mpol_notify',state.notif?'1':'0')};
  $('soundsOn').onchange=e=>{state.sound=e.target.checked;localStorage.setItem('mpol_sound',state.sound?'1':'0')};
+ $('soundVolume').oninput=e=>{
+  const value=Math.max(0,Math.min(100,Number(e.target.value)||0));
+  localStorage.setItem('mpol_sound_volume',String(value));
+  $('soundVolumeValue').textContent=value+'%';
+ };
+ $('previewMessageSound').onclick=()=>window.mpolSound?.play('message',true);
+ $('previewCallSound').onclick=()=>window.mpolSound?.play('incoming',true);
+ if(window.mpolDevicePermissions){
+  $('devicePermissionsRow').style.display='flex';
+  $('resetDevicePermissions').onclick=async()=>{
+   const r=await window.mpolDevicePermissions.reset();
+   toast(r?.ok?'Разрешения сброшены: при следующем звонке появится запрос':'Не удалось сбросить разрешения');
+  };
+ }
  $('scaleSelect').onchange=e=>{state.scale=Number(e.target.value);localStorage.setItem('mpol_scale',state.scale);applyScale()};
  $('logOut').onclick=()=>signout(true);$('changePassword').onclick=changePassword;
  $('checkDeveloper')?.addEventListener('click',async()=>{try{const result=await api('/developer/status');toast(result.ok?'Права разработчика подтверждены':'Доступ ограничен')}catch(e){toast('Нет доступа: '+errorText(e))}});
