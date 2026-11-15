@@ -277,7 +277,8 @@ async function beginCall(mode){
   pc:null,ice:[],started:0,screen:null,remoteStream:null,restarts:0};
  const outgoing=currentCall;
  callLayout();$call('localVideo').srcObject=stream;
- $call('localVideo').classList.toggle('hidden',mode!=='video');
+ $call('localVideo').classList.toggle('hidden',mode!=='video'||!stream.getVideoTracks().length);
+ $call('localVideo').play().catch(()=>{});
  if(!await loadCallIce(outgoing)){endCall(false);return}
  if(!signalCall('invite',{mode})){endCall(false);return}
  startCallRingtone(false);
@@ -336,7 +337,10 @@ function createPeer(){
     const showVideo=()=>{if(currentCall===c && !e.track.muted)area.classList.add('has-remote-video')};
     e.track.onunmute=()=>{showVideo();video.play().catch(()=>{})};
     e.track.onmute=()=>{if(currentCall===c)area.classList.remove('has-remote-video')};
-    video.onplaying=()=>{if(currentCall===c)area.classList.add('has-remote-video')};
+    video.onplaying=()=>{
+     if(currentCall===c&&c.remoteStream.getVideoTracks().some(t=>!t.muted))
+      area.classList.add('has-remote-video');
+    };
     showVideo();
    }
   }
@@ -389,6 +393,8 @@ async function acceptIncomingCall(){
   c.stream=await getLocalCallMedia(c.mode);c.incoming=false;stopCallRingtone();
   callLayout();$call('callStatus').textContent='Подключаемся…';
   $call('localVideo').srcObject=c.stream;
+  $call('localVideo').classList.toggle('hidden',!c.stream.getVideoTracks().length);
+  $call('localVideo').play().catch(()=>{});
   if(!await loadCallIce(c)){endCall(false);return}
   createPeer();if(!signalCall('accept'))endCall(false);
  }catch(e){toast('Микрофон/камера не разрешены: '+e.message);signalCall('decline');endCall(false)}
@@ -482,6 +488,8 @@ async function toggleCallCamera(){
    c.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
   if(sender&&!c.screen)await sender.replaceTrack(camera);
   $call('localVideo').srcObject=c.stream;
+  $call('localVideo').classList.remove('hidden');
+  $call('localVideo').play().catch(()=>{});
   updateCallButtons(c);
  }catch(e){toast('Не удалось включить камеру: '+e.message)}
 }
@@ -503,6 +511,8 @@ async function shareCallScreen(){
   await sender.replaceTrack(track);
   c.screen=share;
   $call('localVideo').srcObject=share;
+  $call('localVideo').classList.remove('hidden');
+  $call('localVideo').play().catch(()=>{});
   updateCallButtons(c);
   toast('Демонстрация экрана включена');
   track.onended=async()=>{
@@ -510,6 +520,7 @@ async function shareCallScreen(){
    c.screen=null;
    try{await sender.replaceTrack(c.stream.getVideoTracks()[0]||null)}catch{}
    $call('localVideo').srcObject=c.stream.getVideoTracks().length?c.stream:null;
+   $call('localVideo').classList.toggle('hidden',!c.stream.getVideoTracks().length);
    updateCallButtons(c);
   };
  }catch(e){
