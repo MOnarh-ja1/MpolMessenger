@@ -31,6 +31,11 @@
     <button class="rail-btn" data-tab="notifications" title="Заявки в друзья" aria-label="Заявки в друзья"><img class="mpol-nav-icon" src="/icons/requests.webp" alt="" draggable="false"><span id="requestDot" class="request-badge hidden" aria-live="polite" aria-label="Заявки в друзья"></span></button>
     <button class="rail-btn" id="railSearch" title="Поиск пользователей" aria-label="Поиск пользователей"><img class="mpol-nav-icon" src="/icons/search.webp" alt="" draggable="false"></button>
   </div><div class="rail-bottom">
+    <button class="rail-btn rail-secondary mpol-assistant-launch" id="assistantToggle" type="button" title="Голосовой помощник MPOL" aria-label="Открыть голосового помощника" aria-expanded="false" aria-controls="assistantPanel">
+      <svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="6.5" y="3.5" width="11" height="15" rx="5.5"/><circle cx="10" cy="10.5" r=".75" fill="currentColor" stroke="none"/><circle cx="14" cy="10.5" r=".75" fill="currentColor" stroke="none"/><path d="M9.4 14c1.7 1.3 3.5 1.3 5.2 0"/><path d="M3.5 9v4M20.5 9v4M10 21h4"/>
+      </svg>
+    </button>
     <button class="rail-btn rail-secondary" data-tab="saved" title="Избранное" aria-label="Избранное"><span class="mpol-action-icon mpol-icon-star" aria-hidden="true"></span></button>
     <button class="rail-btn rail-secondary" data-tab="settings" title="Настройки" aria-label="Настройки"><span class="mpol-action-icon mpol-icon-settings" aria-hidden="true"></span></button>
     <button id="myProfile" title="Мой профиль" class="self-avatar">M</button>
@@ -111,6 +116,28 @@
     </div>
   </div>
 </section>
+<aside id="assistantPanel" class="mpol-assistant-panel hidden" role="dialog" aria-modal="false" aria-label="Голосовой помощник MPOL" tabindex="-1">
+  <div class="mpol-assistant-head">
+    <div><span class="mpol-assistant-eyebrow">MPOL · ПОМОЩНИК</span><strong>Голосовые команды</strong></div>
+    <button type="button" id="assistantClose" class="mpol-assistant-close" title="Закрыть помощника" aria-label="Закрыть помощника">×</button>
+  </div>
+  <div class="mpol-assistant-orb-zone">
+    <div class="mpol-assistant-orb" id="assistantOrb" data-state="idle" aria-hidden="true">
+      <span class="mpol-assistant-orb-inner"><svg width="42" height="42" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></span>
+      <span class="mpol-assistant-pulse p1"></span><span class="mpol-assistant-pulse p2"></span>
+    </div>
+  </div>
+  <p id="assistantStatus" class="mpol-assistant-status" role="status" aria-live="polite">Нажмите «Говорить» или введите команду.</p>
+  <div id="assistantHeard" class="mpol-assistant-heard hidden" aria-live="polite"></div>
+  <button id="assistantListen" type="button" class="mpol-assistant-listen">🎙 Говорить</button>
+  <button id="assistantBrowserSpeech" type="button" class="mpol-assistant-alt hidden">Попробовать распознавание браузера</button>
+  <form id="assistantCommandForm" class="mpol-assistant-form">
+    <input id="assistantCommand" type="text" maxlength="160" placeholder="Открой чат с Nows" autocomplete="off" aria-label="Команда помощнику">
+    <button type="submit" title="Выполнить команду" aria-label="Выполнить команду">↗</button>
+  </form>
+  <div id="assistantChoices" class="mpol-assistant-choices hidden"></div>
+  <p class="mpol-assistant-hint">Примеры: «Открой чат с Nows», «Позвони Nows», «Создай группу с Nows». Для звонка потребуется подтверждение.</p>
+</aside>
  <div id="toastZone" aria-live="polite"></div>
-<script src="/sounds.js" defer></script><script src="/voice.js" defer></script><script src="/calls.js" defer></script><script src="/app.js" defer></script><script src="/updates.js" defer></script>
+<script src="/sounds.js" defer></script><script src="/voice.js" defer></script><script src="/calls.js" defer></script><script src="/app.js" defer></script><script src="/assistant-core.js" defer></script><script src="/assistant.js" defer></script><script src="/updates.js" defer></script>
 </body></html>
