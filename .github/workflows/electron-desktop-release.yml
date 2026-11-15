@@ -77,6 +77,9 @@ jobs:
           New-Item -ItemType Directory -Path desktop/speech-bundle -Force | Out-Null
           Expand-Archive -Path $zip -DestinationPath desktop/speech-bundle -Force
           $model = (Resolve-Path "desktop/speech-bundle/vosk-model-small-ru-0.22").Path
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/mpol-pyinstaller" -Force | Out-Null
+          python -m py_compile desktop/native/mpol_speech.py
+          if ($LASTEXITCODE -ne 0) { throw "Offline speech worker syntax invalid" }
           python -m PyInstaller --noconfirm --clean --onedir --console --name mpol-speech --collect-all vosk --collect-all sounddevice --distpath desktop/speech-bundle --workpath "$env:RUNNER_TEMP/mpol-pyinstaller" --specpath "$env:RUNNER_TEMP/mpol-pyinstaller" desktop/native/mpol_speech.py
           if ($LASTEXITCODE -ne 0) { throw "Offline Russian voice worker packaging failed" }
           $worker = (Resolve-Path "desktop/speech-bundle/mpol-speech/mpol-speech.exe").Path
@@ -137,6 +140,16 @@ jobs:
             if ($target -eq $installed.FullName) { $good = $true; break }
           }
           if (!$good) { throw "Start Menu MPOL shortcut missing or points to temporary NSIS extraction" }
+          $speechDir = Join-Path (Split-Path $installed.FullName -Parent) "resources/speech"
+          $workerExe = Join-Path $speechDir "mpol-speech/mpol-speech.exe"
+          $modelDir = Join-Path $speechDir "vosk-model-small-ru-0.22"
+          if (!(Test-Path $workerExe) -or !(Test-Path $modelDir)) {
+            throw "Installer did not copy offline Russian speech engine and model"
+          }
+          $diagnostic = & $workerExe --model $modelDir --diagnose | Select-Object -Last 1 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $diagnostic.ok -ne $true) {
+            throw "Installed offline Russian speech engine failed self-diagnostic"
+          }
           Write-Host "Permanent installation verified: $($installed.FullName)"
 
 
