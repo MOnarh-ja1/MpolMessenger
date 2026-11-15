@@ -599,6 +599,29 @@ def reset_confirm(body:ResetConfirm,request:Request,d:Session=Depends(db)):
     d.execute(delete(SessionToken).where(SessionToken.user_id==user.id));d.commit()
     return {'ok':True}
 
+# Authenticated nickname lookup for commands and the existing social UI.
+# Searches only a narrow prefix; never returns the entire users table.
+@app.get('/api/users/search')
+def search_users(q: str = '', u: User = Depends(authed), d: Session = Depends(db)):
+    limit('user-search:' + u.id, 24, 60)
+    term = q.strip()
+    if len(term) < 3 or len(term) > 48:
+        raise HTTPException(400, 'Для поиска введите от 3 до 48 символов ника')
+    # Escape SQL wildcard symbols: a user may not enumerate accounts with % or _.
+    escaped = term.lower().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+    matches = d.scalars(select(User).where(
+        func.lower(User.nick).like(escaped + '%', escape='\\')
+    ).order_by(User.nick, User.id).limit(20)).all()
+    results = []
+    for account in matches:
+        if account.id == u.id or moderation_state(d, account.id) or blocked(d, u.id, account.id):
+            continue
+        results.append(user_json(account))
+        if len(results) == 8:
+            break
+    return results
+
+
 @app.get('/api/users/{user_id}')
 def profile(user_id:str,u:User=Depends(authed),d:Session=Depends(db)):
     x=d.get(User,user_id)

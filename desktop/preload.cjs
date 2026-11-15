@@ -24,3 +24,9 @@ if(location.protocol==='file:' && decodeURIComponent(location.pathname).endsWith
    reset:()=>ipcRenderer.invoke('mpol:reset-media-permissions')
   });
  }
+ if(location.protocol==='https:'){
+  contextBridge.exposeInMainWorld('mpolNativeSpeech',{
+   recognize:()=>ipcRenderer.invoke('mpol:speech-recognize'),
+   cancel:()=>ipcRenderer.invoke('mpol:speech-cancel')
+  });
+ }

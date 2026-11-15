@@ -792,3 +792,111 @@ img{-webkit-user-drag:none;user-drag:none}
  .call-card .call-camera-tools button{font-size:11px;padding:7px 9px}
  .call-card[data-mode="video"] .call-active-controls{gap:10px;margin-top:10px}
 }
+
+/* MPOL 3.7 — unobtrusive graphite assistant, no permanent microphone capture. */
+.rail-btn.mpol-assistant-launch{
+ display:grid;place-items:center;border:1px solid #4a4b51;
+ border-radius:13px;color:#d9dbe1;background:linear-gradient(150deg,#292a30,#101114);
+ box-shadow:inset 0 1px 4px #ffffff12,0 4px 15px #0008;
+}
+.rail-btn.mpol-assistant-launch:hover,.rail-btn.mpol-assistant-launch.active{
+ background:linear-gradient(155deg,#3c3d47,#1b1c22);border-color:#9699a6;
+ box-shadow:0 0 18px #d6d9e324,inset 0 1px 2px #fff2;
+}
+.mpol-assistant-panel{
+ position:fixed;z-index:140;top:50%;right:16px;transform:translateY(-50%);
+ width:min(338px,calc(100vw - 94px));max-height:calc(100dvh - 26px);
+ overflow-y:auto;overscroll-behavior:contain;
+ padding:18px 17px 15px;border-radius:22px;
+ color:#f0f1f5;background:radial-gradient(ellipse at 44% 38%,#292b33 0%,#111216 51%,#08090d 100%);
+ border:1px solid #53545d;box-shadow:0 22px 75px #000e,inset 0 1px 2px #ffffff17;
+ scrollbar-width:thin;scrollbar-color:#51525d transparent;
+}
+.mpol-assistant-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.mpol-assistant-head>div{display:flex;flex-direction:column;gap:5px}
+.mpol-assistant-eyebrow{color:#92949e;font-size:10px;letter-spacing:2px;font-weight:750}
+.mpol-assistant-head strong{font-size:16px;font-weight:700;letter-spacing:-.3px}
+.mpol-assistant-close{
+ width:30px;height:30px;border-radius:9px;background:#26272e;
+ border:1px solid #3b3c46;color:#e0e0e6;font-size:21px;line-height:1;
+}
+.mpol-assistant-close:hover{background:#373941}
+.mpol-assistant-orb-zone{display:flex;justify-content:center;align-items:center;height:155px}
+.mpol-assistant-orb{
+ position:relative;isolation:isolate;width:108px;height:108px;display:grid;place-items:center;
+ border-radius:50%;color:#f2f3fc;background:radial-gradient(circle at 34% 27%,#5e606d 0%,#24262d 42%,#08090c 78%);
+ border:2px solid #8f909d83;
+ box-shadow:0 0 0 13px #e5e9fc0a,0 0 0 28px #d0d5e308,0 0 30px #bfc4e32c,
+  inset 0 5px 12px #ffffff20,inset 0 -11px 17px #000a;
+}
+.mpol-assistant-orb-inner{position:relative;z-index:2;filter:drop-shadow(0 0 9px #dfe2ff80)}
+.mpol-assistant-pulse{
+ pointer-events:none;position:absolute;inset:-13px;border-radius:50%;
+ border:1px solid #adb7d13b;opacity:.65;
+}
+.mpol-assistant-pulse.p2{inset:-26px;opacity:.3}
+.mpol-assistant-orb[data-state="listening"]{
+ border-color:#e2e6f3;box-shadow:0 0 0 14px #c4cbd21b,0 0 34px #d8ddff6b,
+ inset 0 4px 12px #fff3;
+}
+.mpol-assistant-orb[data-state="listening"] .mpol-assistant-pulse{
+ animation:mpol-assistant-ring 1.35s ease-in-out infinite alternate;
+}
+.mpol-assistant-orb[data-state="listening"] .mpol-assistant-pulse.p2{
+ animation-delay:.25s;
+}
+.mpol-assistant-orb[data-state="working"] .mpol-assistant-orb-inner{
+ animation:mpol-assistant-work 2.5s ease-in-out infinite;
+}
+@keyframes mpol-assistant-ring{from{transform:scale(.95);opacity:.25}to{transform:scale(1.18);opacity:.8}}
+@keyframes mpol-assistant-work{50%{opacity:.55;transform:scale(.92)}}
+.mpol-assistant-status{font-size:12px;line-height:1.55;text-align:center;color:#c7c8d2;min-height:36px;margin:0 0 9px}
+.mpol-assistant-heard{
+ margin:3px 0 11px;word-break:break-word;text-align:center;
+ padding:8px 10px;background:#24262dd9;border:1px solid #3f424d;
+ border-radius:10px;color:#f5f5fa;font-size:12px;
+}
+.mpol-assistant-listen{
+ display:block;width:100%;padding:12px 14px;background:#f0f1f4;color:#111217;
+ border-radius:12px;font-weight:750;font-size:13px;
+}
+.mpol-assistant-listen:hover{background:#fff}
+.mpol-assistant-alt{
+ width:100%;margin-top:9px;font-size:11px;padding:9px 7px;
+ border:1px solid #52535d;color:#d7d9e2;background:#262831;border-radius:10px;
+}
+.mpol-assistant-form{display:flex;gap:6px;margin:11px 0 9px}
+.mpol-assistant-form input{
+ min-width:0;flex:1;background:#17181e;border:1px solid #4b4c56;
+ color:#f5f5fa;border-radius:10px;padding:10px 9px;font-size:12px;
+}
+.mpol-assistant-form button{
+ width:38px;background:#383b44;border:1px solid #595c67;
+ font-size:21px;border-radius:10px;
+}
+.mpol-assistant-form button:hover{background:#4c4d57}
+.mpol-assistant-hint{color:#81838d;font-size:10px;line-height:1.5;margin:9px 0 0;text-align:center}
+.mpol-assistant-choices{display:flex;flex-direction:column;gap:7px;margin:9px 0 10px}
+.mpol-assistant-choice{
+ padding:11px 12px;border-radius:10px;text-align:left;font-size:12px;
+ border:1px solid #464851;background:#292b33;color:#eff0f3;
+ overflow-wrap:anywhere;
+}
+.mpol-assistant-choice:hover{background:#363942;border-color:#9698a0}
+.mpol-assistant-choice.primary{background:#dfe0e5;border-color:#eef0f5;color:#16171a;font-weight:750}
+.mpol-assistant-choice:disabled{opacity:.5;cursor:wait}
+@media(max-width:600px){
+ .rail-btn.mpol-assistant-launch{width:43px;height:43px}
+ .mpol-assistant-panel{
+  right:9px;left:auto;top:auto;bottom:calc(73px + env(safe-area-inset-bottom));
+  transform:none;width:min(350px,calc(100vw - 18px));
+  max-height:calc(100dvh - 98px);padding:14px;
+ }
+ .mpol-assistant-orb-zone{height:122px}
+ .mpol-assistant-orb{width:82px;height:82px}
+ .mpol-assistant-orb-inner svg{width:35px;height:35px}
+}
+@media(prefers-reduced-motion:reduce){
+ .mpol-assistant-orb[data-state="listening"] .mpol-assistant-pulse,
+ .mpol-assistant-orb[data-state="working"] .mpol-assistant-orb-inner{animation:none}
+}

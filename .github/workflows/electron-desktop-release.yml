@@ -47,10 +47,14 @@ jobs:
           node --check ../client/ui/calls.js
           if ($LASTEXITCODE -ne 0) { throw "Call frontend syntax validation failed" }
           Push-Location ..
-          node tests/test_call_audio.cjs
-          node tests/test_video_calls.cjs
-          node tests/test_sounds.cjs
-          if ($LASTEXITCODE -ne 0) { throw "WebRTC call regression tests failed" }
+          foreach ($script in @("client/ui/assistant-core.js","client/ui/assistant.js")) {
+            node --check $script
+            if ($LASTEXITCODE -ne 0) { throw "Assistant JavaScript syntax failed: $script" }
+          }
+          foreach ($test in @("tests/test_call_audio.cjs","tests/test_video_calls.cjs","tests/test_sounds.cjs","tests/test_assistant.cjs")) {
+            node $test
+            if ($LASTEXITCODE -ne 0) { throw "MPOL regression failed: $test" }
+          }
           Pop-Location
 
       - name: Verify shared MPOL icons and application icon
@@ -108,7 +112,7 @@ jobs:
       - name: Upload EXE as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MPOL-Messenger-Electron-3.6.0-x64
+          name: MPOL-Messenger-Electron-3.7.0-x64
           path: |
             desktop/dist/MpolMessengerSetup.exe
             desktop/dist/MpolMessenger.exe
@@ -119,10 +123,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v3.6.0-desktop"
+          $tag = "v3.7.0-desktop"
           $assets = @("desktop/dist/MpolMessengerSetup.exe","desktop/dist/MpolMessenger.exe")
-          $title = "MPOL Messenger Desktop 3.6.0 — Camera Flip, Screen Share Stop and Melodic Audio"
-          $notes = "MPOL 3.6.0 Windows x64: fixes stopping screen sharing and restoring camera, adds mirror camera and camera switching, stores camera/mic approval per trusted server with reset in Settings, new original louder melodic notification and call audio with volume/preview controls, prefers up to 720p 30 FPS (subject to hardware and network). Screen/window sharing still requires selecting the source every session. Existing accounts and chats remain unchanged."
+          $title = "MPOL Messenger Desktop 3.7.0 — Voice Assistant and Smart Social Commands"
+          $notes = "MPOL 3.7.0 Windows x64: a graphite voice assistant button with small animated microphone orb and a text command fallback, locally installed Russian Windows speech recognition where supported, friend/username matching, authenticated nickname search, real chat/call/group actions. Calls require confirmation, group creation opens the existing form. No new API keys. Server-side interface must also be deployed to use new features; upcoming voice servers remain a separate next-stage feature."
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY

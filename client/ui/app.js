@@ -532,7 +532,68 @@ function changePassword(){modal('Изменить пароль',`<label>Теку
 async function configServer(){if(location.protocol==='https:' && !['localhost','127.0.0.1'].includes(location.hostname)){modal('Сервер MPOL','<p>Вы подключены к общему тестовому серверу MPOL. Данные могут исчезнуть после перезапуска сервера.</p>');return;}let data={url:''};try{const r=await fetch('/__config');data=await r.json()}catch{};
  modal('Подключение к серверу',`<p>Для общения через интернет обоим пользователям нужен один и тот же доступный сервер MPOL. Для локальной проверки используйте <strong>http://127.0.0.1:8000</strong>.</p><label>Адрес сервера<input id="serverUrl" placeholder="https://chat.example.com" value="${esc(data.url||'')}"></label><button class="button" id="saveServer">Сохранить и переподключиться</button><p class="secondary">В интернете используйте HTTPS с настоящим сертификатом. Указанный сервер может получать ваши сообщения.</p>`);
  $('saveServer').onclick=async()=>{try{const r=await fetch('/__config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('serverUrl').value.trim()})});const x=await r.json();if(!r.ok)throw Error(x.error||'Ошибка адреса');storage.token='';location.reload()}catch(e){toast(errorText(e))}}}
-async function signout(send){if(send)api('/auth/logout',{method:'POST'}).catch(()=>{});if(typeof currentCall!=='undefined'&&currentCall)endCall(true);storage.token='';state.me=null;state.active=null;state.requests=[];state.requestsLoaded=false;state.ws?.close();state.ws=null;closeModal();showLogin()}
+async function signout(send){window.mpolAssistantClose?.();if(send)api('/auth/logout',{method:'POST'}).catch(()=>{});if(typeof currentCall!=='undefined'&&currentCall)endCall(true);storage.token='';state.me=null;state.active=null;state.requests=[];state.requestsLoaded=false;state.ws?.close();state.ws=null;closeModal();showLogin()}
+// Limited, authenticated actions exposed to the voice assistant. Only the
+// established social flows can be invoked; no arbitrary API or OS commands.
+window.mpolAssistantApp={
+ isReady:()=>!!state.me,
+ contacts:()=>{
+  const merged=new Map();
+  for(const f of state.friends){
+   if(f?.id&&f.nick)merged.set(f.id,{id:f.id,nick:f.nick,friend:true});
+  }
+  for(const c of state.chats){
+   if(!c.is_group&&!c.is_saved&&c.peer_id&&c.name&&!merged.has(c.peer_id))
+    merged.set(c.peer_id,{id:c.peer_id,nick:c.name,friend:false});
+  }
+  return [...merged.values()];
+ },
+ searchUsers:async q=>{
+  if(String(q).trim().length<3)return [];
+  return api('/users/search?q='+encodeURIComponent(String(q).trim()));
+ },
+ isFriend:id=>state.friends.some(f=>f.id===id),
+ openChat:async user=>{
+  if(!state.friends.some(f=>f.id===user.id))
+   throw Error('Для переписки с '+user.nick+' сначала добавьте пользователя в друзья.');
+  const c=await api('/dm/'+encodeURIComponent(user.id),{method:'POST'});
+  await refreshAll();renderTab('chats');await selectChat(c.id);
+  return true;
+ },
+ startCall:async(user,mode)=>{
+  if(currentCall)throw Error('У вас уже есть активный звонок.');
+  if(!state.ws||state.ws.readyState!==WebSocket.OPEN)
+   throw Error('Нет соединения с сервером. Проверьте сеть.');
+  if(!state.friends.some(f=>f.id===user.id))
+   throw Error('Для звонка сначала добавьте пользователя в друзья.');
+  const c=await api('/dm/'+encodeURIComponent(user.id),{method:'POST'});
+  await refreshAll();renderTab('chats');await selectChat(c.id);
+  await beginCall(mode==='video'?'video':'audio');
+  return true;
+ },
+ createGroupWith:user=>{
+  if(user&&!state.friends.some(f=>f.id===user.id))
+   throw Error('В группу можно добавить только друга.');
+  createGroup();
+  if(user){
+   const box=[...document.querySelectorAll('[data-add-member]')]
+    .find(el=>el.dataset.addMember===user.id);
+   if(box)box.checked=true;
+  }
+  $('groupName')?.focus();
+  return true;
+ },
+ showProfile:user=>{
+  if(user?.id)openUserProfile(user.id);
+ },
+ sendFriendRequest:async user=>{
+  await api('/friends/request',{method:'POST',body:{target_id:user.id}});
+  toast('Заявка в друзья отправлена '+user.nick);
+  return true;
+ },
+ showTab:tab=>renderTab(tab)
+};
+
 function openSearch(){findFriends()}
 $('toggleAuth').onclick=()=>{state.register=!state.register;$('registerFields').classList.toggle('hidden',!state.register);$('confirmFields').classList.toggle('hidden',!state.register);$('authSubtitle').textContent=state.register?'Создайте аккаунт и найдите друзей.':'Добро пожаловать. Войдите в свой аккаунт.';$('authSubmit').firstChild.textContent=state.register?'Зарегистрироваться ':'Войти ';$('toggleAuth').innerHTML=state.register?'Уже есть аккаунт? <b>Войти</b>':'Нет аккаунта? <b>Создать аккаунт</b>';$('password').setAttribute('autocomplete',state.register?'new-password':'current-password')};
 $('rememberLogin').onchange=e=>storage.setRemember(e.target.checked);
