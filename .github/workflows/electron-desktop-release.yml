@@ -100,7 +100,7 @@ jobs:
       - name: Upload EXE as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MPOL-Messenger-Electron-3.3.0-x64
+          name: MPOL-Messenger-Electron-3.4.0-x64
           path: |
             desktop/dist/MpolMessengerSetup.exe
             desktop/dist/MpolMessenger.exe
@@ -111,10 +111,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v3.3.0-desktop"
+          $tag = "v3.4.0-desktop"
           $assets = @("desktop/dist/MpolMessengerSetup.exe","desktop/dist/MpolMessenger.exe")
-          $title = "MPOL Messenger Desktop 3.3.0 — Stable Windows Installer + Portable"
-          $notes = "MPOL 3.3.0 Windows x64: six custom user-supplied glossy graphite action icons (Saved, Settings, Voice, Video, Archive, Delete) in the web UI and installed Windows application. Remove redundant View Profile button: tap/click chat name or avatar to open the peer profile. Same verified permanent Setup EXE and portable build; accounts and chats unchanged. The HTML UI still requires Render deployment for mobile browsers."
+          $title = "MPOL Messenger Desktop 3.4.0 — Stable Windows Installer + Portable"
+          $notes = "MPOL 3.4.0 Windows x64: responsive glossy graphite call overlays based on the two supplied image references. Incoming shows white glowing phone, animated bars and real accept/red-decline actions; outgoing shows animated connecting ring/dots, microphone, audio volume mute and red hang-up; on WebRTC connection switches to timer and remote video for video calls. No nicknames/avatars on call screens. Camera button is only active for video calls, and browser speaker control mutes incoming audio rather than changing physical audio output. Same persistent verified Setup EXE and portable builds. HTML updates on iPhone after server deployment."
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY

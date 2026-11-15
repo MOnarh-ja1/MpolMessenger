@@ -236,6 +236,64 @@ async function main(){
    console.log('PASS iPhone emoji '+width+'x'+height);
 
   }
+  // Design reference: incoming (waveform + accept/decline) and outgoing
+  // (animated connecting arc + 3 action controls + hangup), both mobile/PC.
+  for(const [width,height] of [[1200,800],[390,844],[375,667],[320,568]]){
+   await page.setViewportSize({width,height});
+   for(const stage of ['incoming','outgoing','connected']){
+    const shot=await page.evaluate(stage=>{
+     currentCall={
+      id:'design-test',peer:'MPPEER',nick:'A PRIVATE NICK MUST NOT SHOW',
+      mode:'audio',incoming:stage==='incoming',isCaller:stage!=='incoming',
+      started:stage==='connected'?Date.now():0,stream:null,remoteStream:null
+     };
+     callLayout();
+     const card=document.getElementById('callCard');
+     const box=el=>{const r=el.getBoundingClientRect();
+      return {x:r.left,y:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
+     const inc=document.querySelector('.call-accept-controls');
+     const outgoing=document.querySelector('.call-active-controls');
+     const tools=outgoing.querySelectorAll('.call-tools-row button');
+     return {
+      stage:card.dataset.stage,
+      rect:box(card),
+      incomingVisible:getComputedStyle(inc).display!=='none',
+      outgoingVisible:getComputedStyle(outgoing).display!=='none',
+      accept:box(document.getElementById('acceptCall')),
+      decline:box(document.getElementById('declineCall')),
+      end:box(document.getElementById('endCall')),
+      actions:tools.length,
+      title:document.getElementById('callTitle').textContent,
+      mobileOverflow:document.documentElement.scrollWidth>innerWidth+2,
+      wave:getComputedStyle(document.querySelector('.call-wave')).display,
+      connectingDots:getComputedStyle(document.querySelector('.call-connecting-dots')).display,
+      videoVisible:getComputedStyle(document.querySelector('.call-video-area')).display!=='none'
+     };
+    },stage);
+    assert.equal(shot.stage,stage);
+    assert.ok(shot.rect.width>260&&shot.rect.height>=240,JSON.stringify(shot));
+    assert.ok(shot.rect.x>=0&&shot.rect.right<=width+2,'Call card off screen '+JSON.stringify(shot));
+    assert.equal(shot.mobileOverflow,false,'Call UI horizontal overflow '+JSON.stringify(shot));
+    assert.equal(shot.incomingVisible,stage==='incoming',JSON.stringify(shot));
+    assert.equal(shot.outgoingVisible,stage!=='incoming',JSON.stringify(shot));
+    assert.ok(!shot.title.includes('PRIVATE NICK'),'No avatar or nickname belongs on call page');
+    assert.equal(shot.videoVisible,false,'Voice calls must not show a camera preview');
+    if(stage==='incoming'){
+     assert.ok(shot.accept.width>=80&&shot.decline.width>=80);
+     assert.notEqual(shot.wave,'none');
+    }else{
+     assert.equal(shot.actions,3,'Mic, audio and camera controls required');
+     assert.ok(shot.end.width>=150,'Big red end-call button required');
+    }
+   }
+   const video=await page.evaluate(()=>{
+    currentCall.mode='video';callLayout();
+    return getComputedStyle(document.querySelector('.call-video-area')).display!=='none'
+   });
+   assert.equal(video,true,'Connected video should show remote camera');
+   console.log('PASS call screen reference layout '+width+'x'+height);
+  }
+  await page.evaluate(()=>{currentCall=null;document.getElementById('callLayer').classList.add('hidden')});
  }finally{await browser?.close();await new Promise(r=>server.close(r))}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;server.close()});
