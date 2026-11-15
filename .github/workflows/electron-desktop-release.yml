@@ -49,6 +49,7 @@ jobs:
           Push-Location ..
           node tests/test_call_audio.cjs
           node tests/test_video_calls.cjs
+          node tests/test_sounds.cjs
           if ($LASTEXITCODE -ne 0) { throw "WebRTC call regression tests failed" }
           Pop-Location
 
@@ -107,7 +108,7 @@ jobs:
       - name: Upload EXE as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MPOL-Messenger-Electron-3.5.0-x64
+          name: MPOL-Messenger-Electron-3.6.0-x64
           path: |
             desktop/dist/MpolMessengerSetup.exe
             desktop/dist/MpolMessenger.exe
@@ -118,10 +119,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v3.5.0-desktop"
+          $tag = "v3.6.0-desktop"
           $assets = @("desktop/dist/MpolMessengerSetup.exe","desktop/dist/MpolMessenger.exe")
-          $title = "MPOL Messenger Desktop 3.5.0 — Camera, Screen Share and WebRTC Recovery"
-          $notes = "MPOL 3.5.0 Windows x64: remote video placeholder and immediate local camera preview while connecting, camera fallback with later re-enable, screen sharing button on the call toolbar with explicit Windows source picker and stop/restore action, debounced ICE recovery to avoid unnecessary renegotiation. Uses the current STUN/TURN setup; shared public TURN is best-effort and may still be overloaded. Updated Setup EXE and portable builds. Accounts and chats remain unchanged."
+          $title = "MPOL Messenger Desktop 3.6.0 — Camera Flip, Screen Share Stop and Melodic Audio"
+          $notes = "MPOL 3.6.0 Windows x64: fixes stopping screen sharing and restoring camera, adds mirror camera and camera switching, stores camera/mic approval per trusted server with reset in Settings, new original louder melodic notification and call audio with volume/preview controls, prefers up to 720p 30 FPS (subject to hardware and network). Screen/window sharing still requires selecting the source every session. Existing accounts and chats remain unchanged."
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
