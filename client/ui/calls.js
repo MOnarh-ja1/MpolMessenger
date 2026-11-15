@@ -186,16 +186,19 @@ function updateCallButtons(c){
  const micOn=c?.stream?.getAudioTracks().some(t=>t.enabled)!==false;
  const mute=$call('muteMic'),speaker=$call('toggleSpeaker'),camera=$call('toggleCamera');
  mute.setAttribute('aria-pressed',String(!micOn));
- mute.title=mute.getAttribute('aria-label')=micOn?'Выключить микрофон':'Включить микрофон';
+ mute.title=micOn?'Выключить микрофон':'Включить микрофон';
+ mute.setAttribute('aria-label',mute.title);
  const silent=!!c?.speakerMuted;
  speaker.setAttribute('aria-pressed',String(silent));
- speaker.title=speaker.getAttribute('aria-label')=silent?'Включить звук собеседника':'Выключить звук собеседника';
+ speaker.title=silent?'Включить звук собеседника':'Выключить звук собеседника';
+ speaker.setAttribute('aria-label',speaker.title);
  const cameraOn=!!c?.stream?.getVideoTracks().some(t=>t.enabled);
  camera.disabled=c?.mode!=='video'||!c?.stream?.getVideoTracks().length;
- camera.setAttribute('aria-pressed',String(!cameraOn));
- camera.title=camera.getAttribute('aria-label')=c?.mode!=='video'?
+ camera.setAttribute('aria-pressed',String(c?.mode==='video'&&!cameraOn));
+ camera.title=c?.mode!=='video'?
   'Камера доступна только в видеозвонке':
   cameraOn?'Выключить камеру':'Включить камеру';
+ camera.setAttribute('aria-label',camera.title);
 }
 function markCallConnected(c){
  if(currentCall!==c)return;
