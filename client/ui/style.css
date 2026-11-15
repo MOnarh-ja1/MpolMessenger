@@ -758,3 +758,37 @@ img{-webkit-user-drag:none;user-drag:none}
 @media(max-height:650px){
  .call-card[data-mode="video"] .call-video-area{max-height:26dvh}
 }
+
+/* MPOL 3.6: camera rotation/mirror, immediately visible stop-sharing control,
+   and accessible volume preview settings. */
+.call-video-area #localVideo.camera-mirrored{transform:scaleX(-1)}
+.call-camera-tools{
+ display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
+ max-width:100%;width:100%;align-items:center;
+}
+.call-card .call-camera-tools button{
+ width:auto;max-width:100%;padding:8px 13px;
+ font-size:12px;font-weight:600;line-height:1.3;
+ color:#e9ecf7;background:linear-gradient(155deg,#292c35,#0d0e12);
+ border:1px solid #626673;border-radius:13px;cursor:pointer;
+ box-shadow:inset 0 1px 3px #ffffff21,0 4px 15px #0008;
+}
+.call-card .call-camera-tools button:hover:not(:disabled){border-color:#a1a6b8;background:#353944}
+.call-card .call-camera-tools button:disabled{opacity:.45;cursor:not-allowed}
+.call-card .call-camera-tools #mirrorCamera[aria-pressed="true"]{
+ border-color:#bcc5da;color:#fff;background:linear-gradient(140deg,#384759,#131d27);
+}
+.call-card .call-camera-tools #stopShareScreen{
+ color:#ffe1e2;background:linear-gradient(145deg,#7d1922,#39080f);
+ border-color:#e85763;box-shadow:0 0 15px #e735414a;
+}
+.call-card[data-mode="audio"] .call-camera-tools,
+.call-card[data-stage="incoming"] .call-camera-tools{display:none}
+.settings-panel #soundVolume{min-width:90px;width:min(160px,45vw);flex:0 1 160px;accent-color:#e9e9f5}
+.settings-panel #soundVolumeValue{min-width:42px;text-align:right}
+.settings-panel #previewMessageSound,.settings-panel #previewCallSound{padding:8px 12px}
+@media(max-width:600px){
+ .call-card .call-camera-tools{gap:6px}
+ .call-card .call-camera-tools button{font-size:11px;padding:7px 9px}
+ .call-card[data-mode="video"] .call-active-controls{gap:10px;margin-top:10px}
+}
