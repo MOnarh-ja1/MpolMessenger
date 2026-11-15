@@ -55,29 +55,55 @@ jobs:
           }
           if (!(Test-Path "MpolMessenger.ico")) { throw "Missing application ICO" }
 
-      - name: Compile single-file native Windows app
+      - name: Compile portable EXE and permanent Windows installer
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
           npm run dist:win
           if ($LASTEXITCODE -ne 0) { throw "electron-builder failed" }
-          if (!(Test-Path "dist/MpolMessenger.exe")) { throw "Portable MPOL EXE missing" }
-          $binary = (Get-Item "dist/MpolMessenger.exe")
-          if ($binary.Length -lt 40000000) { throw "Portable binary is too small: $($binary.Length)" }
-          $stream = [System.IO.File]::OpenRead($binary.FullName)
-          try { 
-            if ($stream.ReadByte() -ne 77 -or $stream.ReadByte() -ne 90) { throw "Invalid EXE PE header" }
-          } finally { $stream.Dispose() }
-          $hash = (Get-FileHash "dist/MpolMessenger.exe" -Algorithm SHA256).Hash
-          Write-Host "Portable Electron EXE compiled: $($binary.Length) bytes"
-          Write-Host "SHA256: $hash"
+          foreach ($filename in @("MpolMessengerSetup.exe","MpolMessenger.exe")) {
+            $file = Join-Path "dist" $filename
+            if (!(Test-Path $file)) { throw "Missing Windows release asset: $file" }
+            $binary = (Get-Item $file)
+            if ($binary.Length -lt 40000000) { throw "Windows binary is too small: $($binary.Length)" }
+            $stream = [System.IO.File]::OpenRead($binary.FullName)
+            try {
+              if ($stream.ReadByte() -ne 77 -or $stream.ReadByte() -ne 90) { throw "Invalid EXE PE header for $filename" }
+            } finally { $stream.Dispose() }
+            $hash = (Get-FileHash $file -Algorithm SHA256).Hash
+            Write-Host "Verified $filename : $($binary.Length) bytes, SHA256 $hash"
+          }
+
+      - name: Verify real installer creates a permanent application and Start shortcut
+        working-directory: desktop
+        run: |
+          $exe = (Resolve-Path "dist/MpolMessengerSetup.exe").Path
+          $proc = Start-Process -FilePath $exe -ArgumentList "/S" -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "NSIS installer exit code $($proc.ExitCode)" }
+          $home = Join-Path $env:LOCALAPPDATA "Programs"
+          $installed = Get-ChildItem -Path $home -Recurse -Filter "Mpol Messenger.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (!$installed) { throw "No permanent installed MPOL application at $home" }
+          $start = [Environment]::GetFolderPath("Programs")
+          $shortcuts = Get-ChildItem -Path $start -Recurse -Filter "*.lnk" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "*Mpol*" }
+          $shell = New-Object -ComObject WScript.Shell
+          $good = $false
+          foreach ($link in $shortcuts) {
+            $target = $shell.CreateShortcut($link.FullName).TargetPath
+            if ($target -eq $installed.FullName) { $good = $true; break }
+          }
+          if (!$good) { throw "Start Menu MPOL shortcut missing or points to temporary NSIS extraction" }
+          Write-Host "Permanent installation verified: $($installed.FullName)"
+
 
       - name: Upload EXE as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MPOL-Messenger-Electron-3.1.0-x64
-          path: desktop/dist/MpolMessenger.exe
+          name: MPOL-Messenger-Electron-3.2.0-x64
+          path: |
+            desktop/dist/MpolMessengerSetup.exe
+            desktop/dist/MpolMessenger.exe
           if-no-files-found: error
 
       - name: Publish verified Electron desktop release
@@ -85,14 +111,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v3.1.0-desktop"
-          $asset = "desktop/dist/MpolMessenger.exe"
-          $title = "MPOL Messenger Desktop 3.1.0 — Separate Windows App (Electron)"
-          $notes = "Real standalone Windows x64 EXE: Electron 45.3.2 bundles its own Chromium; no Microsoft Edge application window. Uses the current MPOL online server and existing Neon accounts/chats. Includes in-app GitHub release check and EXE download; original four icons loaded from hosted MPOL UI. Includes native media permission dialogs, Windows notifications, F11 and safe file downloads. Unsigned prerelease; Windows SmartScreen may warn. MPOL 3.1.0: secure selectable HTTPS server origin (Ctrl+Shift+S / offline page), explicit confirmation and health validation for Russia-hosted MPOL, and a corrected Docker image packaging both browser UI and API. A real RU host and database configuration are required before VPN-free access can be claimed."
+          $tag = "v3.2.0-desktop"
+          $assets = @("desktop/dist/MpolMessengerSetup.exe","desktop/dist/MpolMessenger.exe")
+          $title = "MPOL Messenger Desktop 3.2.0 — Stable Windows Installer + Portable"
+          $notes = "MPOL 3.2.0 Windows x64: PREFER MpolMessengerSetup.exe, a real per-user NSIS installer. It installs permanently, creates correct desktop/Start shortcuts and supports stable taskbar pinning. The portable MpolMessenger.exe remains for compatibility but its extracted temporary process must NOT be pinned. Updated in-app download now prefers the verified installer. Accounts and chats stay on the existing server. Unsigned: SmartScreen may show a warning. Russia HTTPS server deployment remains a separate requirement."
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $asset --clobber --repo $env:GITHUB_REPOSITORY
+            gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $tag $asset --title $title --notes $notes --prerelease --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
+            gh release create $tag $assets --title $title --notes $notes --prerelease --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
           }
           if ($LASTEXITCODE -ne 0) { throw "GitHub Electron EXE release failed" }
