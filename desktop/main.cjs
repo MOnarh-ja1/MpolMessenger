@@ -9,7 +9,7 @@ const {loadPermissionGrants,savePermissionGrants,hasPermission,
   grantPermissions,revokeMediaPermissions}=require('./lib/media-permissions.cjs');
 const {startNativeRecognition}=require('./lib/speech.cjs');
 
-const APP_VERSION = '3.7.2';
+const APP_VERSION = '3.8.0';
 const { offerDesktopUpdate } = require('./lib/updater.cjs');
 let activeServerOrigin=SERVER_ORIGIN;
 const isTrustedUrl=url=>isMpolUrl(url,activeServerOrigin);

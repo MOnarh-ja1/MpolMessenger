@@ -5,6 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 MPOL_UPLOAD_DIR=/app/server/upl
 COPY server/requirements.txt /app/server/requirements.txt
 RUN pip install --no-cache-dir -r /app/server/requirements.txt
 COPY server/app.py /app/server/app.py
+COPY server/server_spaces.py /app/server/server_spaces.py
 COPY client/ui /app/client/ui
 RUN mkdir -p /app/server/uploads
 EXPOSE 8000

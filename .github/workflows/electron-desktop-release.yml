@@ -47,11 +47,11 @@ jobs:
           node --check ../client/ui/calls.js
           if ($LASTEXITCODE -ne 0) { throw "Call frontend syntax validation failed" }
           Push-Location ..
-          foreach ($script in @("client/ui/assistant-core.js","client/ui/assistant.js")) {
+          foreach ($script in @("client/ui/assistant-core.js","client/ui/assistant.js","client/ui/servers.js")) {
             node --check $script
             if ($LASTEXITCODE -ne 0) { throw "Assistant JavaScript syntax failed: $script" }
           }
-          foreach ($test in @("tests/test_call_audio.cjs","tests/test_video_calls.cjs","tests/test_sounds.cjs","tests/test_assistant.cjs")) {
+          foreach ($test in @("tests/test_call_audio.cjs","tests/test_video_calls.cjs","tests/test_sounds.cjs","tests/test_assistant.cjs","tests/test_servers_ui.cjs")) {
             node $test
             if ($LASTEXITCODE -ne 0) { throw "MPOL regression failed: $test" }
           }
@@ -158,7 +158,7 @@ jobs:
       - name: Upload EXE as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MPOL-Messenger-Electron-3.7.2-x64
+          name: MPOL-Messenger-Electron-3.8.0-x64
           path: |
             desktop/dist/MpolMessengerSetup.exe
             desktop/dist/MpolMessenger.exe
@@ -169,10 +169,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v3.7.2-desktop"
+          $tag = "v3.8.0-desktop"
           $assets = @("desktop/dist/MpolMessengerSetup.exe","desktop/dist/MpolMessenger.exe")
-          $title = "MPOL Messenger Desktop 3.7.2 — Smarter Russian Voice Commands"
-          $notes = "MPOL 3.7.2 Windows x64: expanded on-device Russian command understanding for chats, calls, groups, profiles, friends, multiple speech formulations and phonetic usernames; chooses recognized alternatives from HTML speech and offline Windows Vosk, preserves speech across short pauses, and displays locally heard text when it cannot understand. No paid API key and no remote speech upload by the offline Windows engine; browser speech availability still depends on browser/provider. Existing messages and accounts unchanged."
+          $title = "MPOL Messenger Desktop 3.8.0 — Gaming Servers and Voice Rooms"
+          $notes = "MPOL 3.8.0 Windows x64: separate graphite Servers icon, persistent gaming communities, invites for friends, server roles (owner, admin, moderator, member), text channels and four-person mesh WebRTC voice rooms with mute, camera, screen share and individual volume. Role checks and signaling are authenticated server-side. No paid API keys; shared public TURN remains best effort and live WebRTC quality is network-dependent. The updated HTML and API must also be deployed on Render for servers to work."
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY

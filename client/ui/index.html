@@ -29,6 +29,15 @@
     <button class="rail-btn active" data-tab="chats" title="Сообщения" aria-label="Сообщения"><img class="mpol-nav-icon" src="/icons/messages.webp" alt="" draggable="false"></button>
     <button class="rail-btn" data-tab="friends" title="Друзья" aria-label="Друзья"><img class="mpol-nav-icon" src="/icons/friends.webp" alt="" draggable="false"></button>
     <button class="rail-btn" data-tab="notifications" title="Заявки в друзья" aria-label="Заявки в друзья"><img class="mpol-nav-icon" src="/icons/requests.webp" alt="" draggable="false"><span id="requestDot" class="request-badge hidden" aria-live="polite" aria-label="Заявки в друзья"></span></button>
+    <button class="rail-btn mpol-servers-launch" data-tab="servers" title="Сервера и игровые комнаты" aria-label="Сервера и игровые комнаты">
+      <svg viewBox="0 0 28 28" width="35" height="35" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3.5" y="5" width="21" height="8" rx="2.6" fill="#242831" stroke="#a0a6b7"/>
+        <rect x="3.5" y="15" width="21" height="8" rx="2.6" fill="#242831" stroke="#a0a6b7"/>
+        <circle cx="8.2" cy="9" r="1.2" fill="#f0f4fc" stroke="none"/>
+        <circle cx="8.2" cy="19" r="1.2" fill="#f0f4fc" stroke="none"/>
+        <path d="M13 9h7M13 19h7" stroke="#d5d9e4"/>
+      </svg>
+    </button>
     <button class="rail-btn" id="railSearch" title="Поиск пользователей" aria-label="Поиск пользователей"><img class="mpol-nav-icon" src="/icons/search.webp" alt="" draggable="false"></button>
   </div><div class="rail-bottom">
     <button class="rail-btn rail-secondary mpol-assistant-launch" id="assistantToggle" type="button" title="Голосовой помощник MPOL" aria-label="Открыть голосового помощника" aria-expanded="false" aria-controls="assistantPanel">
@@ -51,6 +60,10 @@
     <div class="left-foot"><span class="status-pip"></span><span>Защищённое соединение при HTTPS</span></div>
   </aside>
   <main class="conversation">
+    <section id="serverDashboard" class="server-dashboard hidden" aria-label="Сервер MPOL">
+      <div id="serverOverview" class="server-overview"></div>
+      <div id="serverVoicePanel" class="server-voice-panel hidden"></div>
+    </section>
     <div id="emptyChat" class="empty-state"><div class="empty-logo">M<span>.</span></div><h2>Ваше пространство общения</h2><p>Выберите диалог или найдите друга по ID, чтобы начать переписку.</p><button id="emptyFind" class="button outlined">Найти друзей <span>↗</span></button></div>
     <div id="openedChat" class="opened-chat hidden"><header class="conv-header"><button type="button" class="conv-user conv-user-profile" id="chatPeerHeader" title="Открыть профиль собеседника"><div class="avatar" id="chatAvatar">◉</div><div><h3 id="chatName">Имя</h3><span id="chatPresence">Личные сообщения</span></div></button><div class="conv-top-actions"><button id="voiceCall" type="button" title="Голосовой звонок" aria-label="Голосовой звонок"><span class="mpol-action-icon mpol-icon-call" aria-hidden="true"></span></button><button id="videoCall" type="button" title="Видеозвонок" aria-label="Видеозвонок"><span class="mpol-action-icon mpol-icon-video" aria-hidden="true"></span></button><button id="archiveChat" type="button" title="В архив" aria-label="Архивировать чат"><span class="mpol-action-icon mpol-icon-archive" aria-hidden="true"></span></button><button id="deleteChat" type="button" title="Удалить чат только у себя" aria-label="Удалить чат у себя"><span class="mpol-action-icon mpol-icon-delete" aria-hidden="true"></span></button><button id="searchMessages" title="Поиск в переписке" aria-label="Поиск в переписке"><img class="mpol-header-search-icon" src="/icons/search.webp" alt="" draggable="false"></button><button id="chatInfo" title="Информация">•••</button></div></header>
       <div id="emojiPalette" class="emoji-palette hidden" aria-label="Выбор эмодзи"></div>
@@ -124,5 +137,5 @@
   <span id="assistantStatus" class="mpol-assistant-sr-only" role="status" aria-live="polite">Нажмите на круг для голосовой команды.</span>
 </aside>
  <div id="toastZone" aria-live="polite"></div>
-<script src="/sounds.js" defer></script><script src="/voice.js" defer></script><script src="/calls.js" defer></script><script src="/app.js" defer></script><script src="/assistant-core.js" defer></script><script src="/assistant.js" defer></script><script src="/updates.js" defer></script>
+<script src="/sounds.js" defer></script><script src="/voice.js" defer></script><script src="/calls.js" defer></script><script src="/app.js" defer></script><script src="/assistant-core.js" defer></script><script src="/assistant.js" defer></script><script src="/servers.js" defer></script><script src="/updates.js" defer></script>
 </body></html>

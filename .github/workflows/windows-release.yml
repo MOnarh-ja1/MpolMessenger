@@ -49,6 +49,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Assistant UI failed syntax validation" }
           node tests/test_assistant.cjs
           if ($LASTEXITCODE -ne 0) { throw "Voice assistant regression test failed" }
+          node --check client/ui/servers.js
+          if ($LASTEXITCODE -ne 0) { throw "Server interface syntax failed" }
+          node tests/test_servers_ui.cjs
+          if ($LASTEXITCODE -ne 0) { throw "Server interface regression failed" }
 
       - name: Browser layout smoke test (Microsoft Edge / Chrome)
         shell: pwsh
@@ -68,6 +72,10 @@ jobs:
           python -m pip install -r server/requirements.txt httpx
           python tests/test_friend_realtime.py
           python tests/test_mpol2.py
+          python -m py_compile server/server_spaces.py
+          if ($LASTEXITCODE -ne 0) { throw "Server API syntax failed" }
+          python tests/test_servers.py
+          if ($LASTEXITCODE -ne 0) { throw "Server API regression failed" }
 
       - name: Build Windows executable
         shell: pwsh

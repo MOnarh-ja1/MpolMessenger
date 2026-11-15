@@ -181,15 +181,23 @@ async function deleteActiveChat(){
 function updateFilters(){
  document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('active',b.dataset.filter===state.chatFilter))
 }
-function renderTab(tab){if(typeof closeEmojiPalette==='function')closeEmojiPalette();$('mainScreen').classList.remove('mobile-chat-open');if(tab==='saved'){openSavedChat();return}state.tab=tab;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));
- $('listTitle').textContent=({chats:'Сообщения',friends:'Друзья',groups:'Группы',notifications:'Заявки в друзья',settings:'Настройки'})[tab]||'Сообщения';
+function renderTab(tab){if(typeof closeEmojiPalette==='function')closeEmojiPalette();$('mainScreen').classList.remove('mobile-chat-open');if(tab==='saved'){openSavedChat();return}
+ if(tab!=='servers')$('serverDashboard').classList.add('hidden');
+ state.tab=tab;document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));
+ $('listTitle').textContent=({chats:'Сообщения',friends:'Друзья',groups:'Группы',notifications:'Заявки в друзья',servers:'Сервера',settings:'Настройки'})[tab]||'Сообщения';
  $('chatFilters').classList.toggle('hidden',tab!=='chats');
- $('listSubtitle').textContent=({chats:'На связи с теми, кто важен',friends:'Ваш круг общения',groups:'Командные беседы',notifications:'Новые знакомства',settings:'Персональные параметры'})[tab];
- $('newMessage').textContent=tab==='groups'?'+ Создать группу':tab==='friends'?'+ Добавить друга':tab==='notifications'?'Обновить':'⚙ Настройки';
+ $('listSubtitle').textContent=({chats:'На связи с теми, кто важен',friends:'Ваш круг общения',groups:'Командные беседы',notifications:'Новые знакомства',servers:'Игровые сообщества и комнаты',settings:'Персональные параметры'})[tab];
+ $('newMessage').textContent=tab==='groups'?'+ Создать группу':tab==='friends'?'+ Добавить друга':tab==='notifications'?'Обновить':tab==='servers'?'+ Создать сервер':'⚙ Настройки';
  if(tab==='chats')$('newMessage').textContent='+ Новый чат';
- $('createGroup').classList.toggle('hidden',tab==='settings'||tab==='notifications');
- if(tab==='settings'){openSettings();renderList();return}renderList();if(tab==='notifications')refreshRequests();}
+ $('createGroup').classList.toggle('hidden',tab==='settings'||tab==='notifications'||tab==='servers');
+ if(tab==='settings'){openSettings();renderList();return}
+ if(tab==='servers'){
+  window.mpolServers?.openTab?.();
+  renderList();return;
+ }
+ renderList();if(tab==='notifications')refreshRequests();}
 function renderList(){let filter=$('listSearch').value.trim().toLowerCase();const root=$('chatList');root.replaceChildren();
+ if(state.tab==='servers'){window.mpolServers?.renderList?.(filter);return;}
  if(state.tab==='settings'){root.innerHTML='<div class="list-blank">Нажмите «Настройки», чтобы изменить профиль и уведомления.</div>';return}
  if(state.tab==='notifications'){
   if(!state.requests.length){root.innerHTML='<div class="list-blank"><strong>Нет новых заявок</strong>Новые заявки появятся здесь автоматически.</div>';return}
@@ -216,7 +224,7 @@ function renderList(){let filter=$('listSearch').value.trim().toLowerCase();cons
  });if(!a.length)root.innerHTML='<div class="list-blank"><strong>Диалогов пока нет</strong>Создайте чат или найдите друзей.</div>';
  for(const c of a){const el=document.createElement('button');el.className='chat-item'+(state.active?.id===c.id?' selected':'');el.innerHTML=avatar(c.avatar,c.online,c.peer_id)+`<div class="chat-item-body"><div class="chat-item-head"><strong>${esc(c.name)}</strong><time>${datestr(c.last?.sent_at)}</time></div><div class="chat-item-preview">${esc(c.last?.deleted?'Сообщение удалено':c.last?.body|| (c.last?.attachment?'📎 '+c.last.attachment.name:'Новая переписка'))}</div></div>${c.unread?`<span class="count-badge">${c.unread}</span>`:''}`;el.onclick=()=>selectChat(c.id);root.append(el)}
 }
-async function selectChat(id){try{if(typeof closeEmojiPalette==='function')closeEmojiPalette();const c=state.chats.find(x=>x.id===id);if(!c)throw Error('Чат не найден');state.active=c;state.reply=null;replyUpdate();$('mainScreen').classList.add('mobile-chat-open');$('emptyChat').classList.add('hidden');$('openedChat').classList.remove('hidden');updateHeader();state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages();await api('/chats/'+encodeURIComponent(id)+'/read',{method:'POST'});state.active.unread=0;renderList();if(window.matchMedia('(min-width:601px)').matches)$('messageInput').focus()}catch(e){toast(errorText(e))}}
+async function selectChat(id){try{if(typeof closeEmojiPalette==='function')closeEmojiPalette();const c=state.chats.find(x=>x.id===id);if(!c)throw Error('Чат не найден');state.active=c;$('serverDashboard').classList.add('hidden');state.reply=null;replyUpdate();$('mainScreen').classList.add('mobile-chat-open');$('emptyChat').classList.add('hidden');$('openedChat').classList.remove('hidden');updateHeader();state.messages=await api('/chats/'+encodeURIComponent(id)+'/messages');renderMessages();await api('/chats/'+encodeURIComponent(id)+'/read',{method:'POST'});state.active.unread=0;renderList();if(window.matchMedia('(min-width:601px)').matches)$('messageInput').focus()}catch(e){toast(errorText(e))}}
 function updateHeader(){if(!state.active)return;const c=state.active;
  $('chatAvatar').innerHTML=(c.avatar==='📷'&&c.peer_id)?'<img class="avatar-photo" src="/api/avatars/'+encodeURIComponent(c.peer_id)+'" alt="">':esc(c.avatar);
  $('chatName').textContent=c.name;$('chatPresence').textContent=c.is_saved?'Только вы':c.is_group?c.members.length+' участников':c.online?'● В сети':'Не в сети';
@@ -289,6 +297,9 @@ function wsConnect(){if(!storage.token||!state.me)return;const existing=state.ws
    signout(false);return;
   }
   if(m.type==='call_signal'){onCallSignal(m);return}
+  if(m.type==='servers_changed'||m.type.startsWith('space_voice_')){
+   window.mpolServers?.onWebSocket?.(m);return
+  }
   if(m.type==='authenticated'){refreshAll().catch(()=>{});if(state.active)loadMessages().catch(()=>{});setConnectionStatus(true);return}
   if(m.type==='friend_request'){refreshAll().catch(()=>{});return}
   if(m.type==='message'){if(m.message.user_id!==state.me.id){notifyNewMessage(m.message)}if(state.active?.id===m.message.chat_id){if(!state.messages.some(x=>x.id===m.message.id)){state.messages.push(m.message);renderMessages()}api('/chats/'+state.active.id+'/read',{method:'POST'}).catch(()=>{})}refreshAll().catch(()=>{})}
@@ -532,9 +543,13 @@ function changePassword(){modal('Изменить пароль',`<label>Теку
 async function configServer(){if(location.protocol==='https:' && !['localhost','127.0.0.1'].includes(location.hostname)){modal('Сервер MPOL','<p>Вы подключены к общему тестовому серверу MPOL. Данные могут исчезнуть после перезапуска сервера.</p>');return;}let data={url:''};try{const r=await fetch('/__config');data=await r.json()}catch{};
  modal('Подключение к серверу',`<p>Для общения через интернет обоим пользователям нужен один и тот же доступный сервер MPOL. Для локальной проверки используйте <strong>http://127.0.0.1:8000</strong>.</p><label>Адрес сервера<input id="serverUrl" placeholder="https://chat.example.com" value="${esc(data.url||'')}"></label><button class="button" id="saveServer">Сохранить и переподключиться</button><p class="secondary">В интернете используйте HTTPS с настоящим сертификатом. Указанный сервер может получать ваши сообщения.</p>`);
  $('saveServer').onclick=async()=>{try{const r=await fetch('/__config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('serverUrl').value.trim()})});const x=await r.json();if(!r.ok)throw Error(x.error||'Ошибка адреса');storage.token='';location.reload()}catch(e){toast(errorText(e))}}}
-async function signout(send){window.mpolAssistantClose?.();if(send)api('/auth/logout',{method:'POST'}).catch(()=>{});if(typeof currentCall!=='undefined'&&currentCall)endCall(true);storage.token='';state.me=null;state.active=null;state.requests=[];state.requestsLoaded=false;state.ws?.close();state.ws=null;closeModal();showLogin()}
+async function signout(send){window.mpolServers?.leaveVoice?.();window.mpolAssistantClose?.();if(send)api('/auth/logout',{method:'POST'}).catch(()=>{});if(typeof currentCall!=='undefined'&&currentCall)endCall(true);storage.token='';state.me=null;state.active=null;state.requests=[];state.requestsLoaded=false;state.ws?.close();state.ws=null;closeModal();showLogin()}
 // Limited, authenticated actions exposed to the voice assistant. Only the
 // established social flows can be invoked; no arbitrary API or OS commands.
+window.mpolServerApp={
+ api,toast,errorText,modal,closeModal,refreshAll,selectChat,renderTab,renderList,
+ get state(){return state},esc
+};
 window.mpolAssistantApp={
  isReady:()=>!!state.me,
  contacts:()=>{
@@ -601,7 +616,7 @@ $('retrySession').onclick=()=>startup();
 $('switchAccount').onclick=()=>{storage.token='';showLogin();$('authError').textContent='Выберите аккаунт для входа.'};
 $('authForm').onsubmit=async e=>{e.preventDefault();$('authError').textContent='';$('authSubmit').disabled=true;try{const login=$('login').value.trim(),password=$('password').value;if(state.register&&password!==$('password2').value)throw Error('Пароли не совпадают');const body=state.register?{nick:$('nick').value,login,password,email:$('email').value||null}:{login,password};const data=await api(state.register?'/auth/register':'/auth/login',{method:'POST',body});storage.token=data.token;state.me=data.user;await showMain()}catch(e){$('authError').textContent=errorText(e)}finally{$('authSubmit').disabled=false}};
 $('configureServer').onclick=configServer;
-$('ruServerDesktop').onclick=()=>{if(isDesktopClient)location.href='mpol://settings'};$('forgotPassword').onclick=forgotPassword;$('newMessage').onclick=()=>{if(state.tab==='notifications')refreshAll();else if(state.tab==='settings')openSettings();else if(state.tab==='groups')createGroup();else findFriends()};$('createGroup').onclick=createGroup;
+$('ruServerDesktop').onclick=()=>{if(isDesktopClient)location.href='mpol://settings'};$('forgotPassword').onclick=forgotPassword;$('newMessage').onclick=()=>{if(state.tab==='notifications')refreshAll();else if(state.tab==='settings')openSettings();else if(state.tab==='groups')createGroup();else if(state.tab==='servers')window.mpolServers?.createServer?.();else findFriends()};$('createGroup').onclick=createGroup;
 
 document.querySelectorAll('[data-filter]').forEach(el=>el.onclick=()=>{state.chatFilter=el.dataset.filter;updateFilters();renderList()});
 updateFilters();
