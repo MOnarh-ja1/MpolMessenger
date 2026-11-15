@@ -48,6 +48,35 @@ async function main(){
   });
   assert.ok(iconCheck.ok,'Supplied icon assets and search routing: '+JSON.stringify(iconCheck));
   console.log('PASS: all four custom icons decode; search button is wired');
+  const customActions=await page.evaluate(async()=>{
+    const source=new Image();source.src='/icons/mpol-actions.webp?v=3.3.0';
+    try{await source.decode()}catch(err){return {error:String(err),width:source.naturalWidth}}
+    const actions=[
+      ['.rail-secondary[data-tab="saved"]','.mpol-icon-star','0% 0%'],
+      ['.rail-secondary[data-tab="settings"]','.mpol-icon-settings','50% 0%'],
+      ['#voiceCall','.mpol-icon-call','100% 0%'],
+      ['#videoCall','.mpol-icon-video','0% 100%'],
+      ['#archiveChat','.mpol-icon-archive','50% 100%'],
+      ['#deleteChat','.mpol-icon-delete','100% 100%']
+    ];
+    return {width:source.naturalWidth,height:source.naturalHeight,
+      buttons:actions.map(([button,icon,pos])=>{
+        const node=document.querySelector(button+' '+icon);
+        const style=node?getComputedStyle(node):null;
+        return {button,exists:!!node,
+          sprite:style?.backgroundImage?.includes('mpol-actions.webp'),
+          position:style?.backgroundPosition===pos}
+      }),
+      separateProfile:!!document.querySelector('#openChatProfile')};
+  });
+  assert.equal(customActions.width,144,'Expected the exact six-icon 3x2 WebP sprite');
+  assert.equal(customActions.height,96,'Expected two rows of glossy icons');
+  assert.equal(customActions.separateProfile,false,'Remove redundant View Profile button');
+  for(const a of customActions.buttons){
+    assert.ok(a.exists&&a.sprite&&a.position,'Missing/misplaced supplied icon '+JSON.stringify(a));
+  }
+  console.log('PASS: six user-supplied glossy icons decode in correct locations');
+
 
   await page.evaluate(()=>{
    document.getElementById('authScreen').classList.add('hidden');
@@ -107,12 +136,13 @@ async function main(){
       peer_id:u.id,avatar:'◉',online:true,members:[state.me.id,u.id]};
     updateHeader();
     return {regular,developer,deleteChat:!!document.getElementById('deleteChat'),
-      profileButton:!document.getElementById('openChatProfile').classList.contains('hidden')};
+      profileButton:!!document.getElementById('chatPeerHeader')&&
+        !document.getElementById('chatPeerHeader').disabled};
   });
   assert.equal(moderationUi.regular.profile,'Профиль пользователя');
   assert.equal(moderationUi.regular.adminVisible,false,'Regular users must not see admin UI');
   assert.equal(moderationUi.developer.adminVisible,true,'Developer sees moderation UI');
-  assert.ok(moderationUi.deleteChat&&moderationUi.profileButton,'Chat toolbar controls missing');
+  assert.ok(moderationUi.deleteChat&&moderationUi.profileButton,'Chat deletion and tappable profile header missing');
   console.log('PASS peer profile, developer-only moderation UI and chat deletion controls');
   const profileTap=await page.evaluate(async()=>{
     const originalApi=api;

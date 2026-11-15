@@ -100,7 +100,7 @@ jobs:
       - name: Upload EXE as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MPOL-Messenger-Electron-3.2.0-x64
+          name: MPOL-Messenger-Electron-3.3.0-x64
           path: |
             desktop/dist/MpolMessengerSetup.exe
             desktop/dist/MpolMessenger.exe
@@ -111,10 +111,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v3.2.0-desktop"
+          $tag = "v3.3.0-desktop"
           $assets = @("desktop/dist/MpolMessengerSetup.exe","desktop/dist/MpolMessenger.exe")
-          $title = "MPOL Messenger Desktop 3.2.0 — Stable Windows Installer + Portable"
-          $notes = "MPOL 3.2.0 Windows x64: PREFER MpolMessengerSetup.exe, a real per-user NSIS installer. It installs permanently, creates correct desktop/Start shortcuts and supports stable taskbar pinning. The portable MpolMessenger.exe remains for compatibility but its extracted temporary process must NOT be pinned. Updated in-app download now prefers the verified installer. Accounts and chats stay on the existing server. Unsigned: SmartScreen may show a warning. Russia HTTPS server deployment remains a separate requirement."
+          $title = "MPOL Messenger Desktop 3.3.0 — Stable Windows Installer + Portable"
+          $notes = "MPOL 3.3.0 Windows x64: six custom user-supplied glossy graphite action icons (Saved, Settings, Voice, Video, Archive, Delete) in the web UI and installed Windows application. Remove redundant View Profile button: tap/click chat name or avatar to open the peer profile. Same verified permanent Setup EXE and portable build; accounts and chats unchanged. The HTML UI still requires Render deployment for mobile browsers."
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY

@@ -1,4 +1,12 @@
-> 🟢 **MPOL Messenger Desktop 3.2.0 — рекомендуемый установщик Windows:** [СКАЧАТЬ установщик](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v3.2.0-desktop/MpolMessengerSetup.exe) · [выпуск на GitHub](https://github.com/MOnarh-ja1/MpolMessenger/releases/tag/v3.2.0-desktop) · [резервный portable EXE](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v3.2.0-desktop/MpolMessenger.exe). Исправлено закрепление в панели задач и кнопки восстановления соединения. Для работы онлайн сервер MPOL по-прежнему должен быть доступен.
+> 🟢 **MPOL Messenger Desktop 3.3.0 — новые глянцевые иконки интерфейса:** [скачать установщик Windows](https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v3.3.0-desktop/MpolMessengerSetup.exe) · [страница обновления](https://github.com/MOnarh-ja1/MpolMessenger/releases/tag/v3.3.0-desktop) · [веб-версия](https://mpol-messenger-api.onrender.com/). Заменены шесть иконок пользователя; отдельная кнопка «Профиль» убрана, профиль открывается по нику/аватару. Для HTML требуется развернуть изменения на Render.
+
+
+## MPOL Messenger 3.3.0 — пользовательские иконки
+
+- Заменены шесть кнопок на **точно вырезанные из присланной картинки** чёрно-графитовые WebP-иконки: звезда «Избранное», шестерёнка «Настройки», трубка «Голосовой звонок», камера «Видеозвонок», коробка «Архивировать», корзина «Удалить чат».
+- Изображения упакованы в один оптимизированный 3×2 WebP-спрайт `client/ui/icons/mpol-actions.webp` — небольшой размер, прозрачность, сохранённая оригинальная стилистика. Иконки показываются и в браузере, и в EXE, поскольку оба клиента используют общий HTML/CSS.
+- Удалена отдельная плашка просмотра профиля в переписке и поиске; открыть профиль всё ещё можно по нику/аватару в заголовке чата, в друзьях или по нажатию на карточку пользователя в поиске.
+- Для Windows используйте `MpolMessengerSetup.exe` вместо временного portable EXE. Исходный HTML обновится на телефоне только после развертывания сайта на Render. Переустановка аккаунты не удаляет.
 
 ## MPOL Messenger 3.2.0 — установленное приложение вместо временного EXE
 

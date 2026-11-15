@@ -417,3 +417,56 @@ img{-webkit-user-drag:none;user-drag:none}
  .conv-user-profile .profile-user-copy{display:block}
  .msg-actions [data-action="copy"]{min-width:37px;min-height:37px}
 }
+
+/* MPOL 3.3 — six actual glossy graphite user-supplied icons (3 × 2 sprite).
+   The 48px source cells preserve transparency and contain no text/emoji.
+   Row 1: favourite, settings, voice | row 2: video, archive, delete. */
+.mpol-action-icon{
+  display:block;
+  width:30px;height:30px;
+  flex:0 0 auto;
+  background-image:url('/icons/mpol-actions.webp?v=3.3.0');
+  background-repeat:no-repeat;
+  background-size:300% 200%;
+  pointer-events:none;
+  user-select:none;
+}
+.mpol-icon-star{background-position:0% 0%}
+.mpol-icon-settings{background-position:50% 0%}
+.mpol-icon-call{background-position:100% 0%}
+.mpol-icon-video{background-position:0% 100%}
+.mpol-icon-archive{background-position:50% 100%}
+.mpol-icon-delete{background-position:100% 100%}
+.rail-secondary .mpol-action-icon{width:37px;height:37px}
+.rail-secondary{display:grid;place-items:center}
+.conv-top-actions button:has(.mpol-action-icon){display:grid;place-items:center;padding:1px}
+.conv-top-actions button:has(.mpol-action-icon) .mpol-action-icon{width:30px;height:30px}
+.conv-top-actions button:has(.mpol-icon-delete):hover{background:#402225}
+.found-user-info{
+ display:flex;align-items:center;gap:10px;min-width:0;
+ background:transparent!important;padding:0!important;flex:1;
+ text-align:left;color:inherit;
+}
+.found-user-info>span{display:flex;flex-direction:column;gap:4px;min-width:0}
+.found-user-info:hover strong{text-decoration:underline}
+.found-user-info .secondary{display:block}
+@media(max-width:600px){
+  /* Keep the original thumb-friendly one-panel layout. Removing the redundant
+     View Profile button frees space for the actual archive image. */
+  .conv-top-actions #archiveChat:not(.hidden){display:grid!important;place-items:center}
+  .conv-top-actions button:has(.mpol-action-icon){width:35px;min-width:35px;height:38px}
+  .conv-top-actions #voiceCall:not(.hidden),
+  .conv-top-actions #videoCall:not(.hidden){width:38px;min-width:38px;height:40px}
+  .conv-top-actions button:has(.mpol-action-icon) .mpol-action-icon{width:34px;height:34px}
+  .conv-top-actions{gap:1px}
+  .conv-user{flex:1 1 auto}
+  .conv-user h3{max-width:80px}
+  .rail-secondary .mpol-action-icon{width:35px;height:35px}
+}
+@media(max-width:360px){
+  .conv-top-actions button:has(.mpol-action-icon){width:32px;min-width:32px;height:36px}
+  .conv-top-actions #voiceCall:not(.hidden),
+  .conv-top-actions #videoCall:not(.hidden){width:33px;min-width:33px;height:36px}
+  .conv-top-actions button:has(.mpol-action-icon) .mpol-action-icon{width:31px;height:31px}
+  .conv-user h3{max-width:65px}
+}

@@ -81,7 +81,7 @@ test('Windows installer creates permanent shortcuts and recovery page uses guard
  const path=require('node:path');
  const root=path.resolve(__dirname,'..');
  const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
- assert.equal(pkg.version,'3.2.0');
+ assert.match(pkg.version,/^\d+\.\d+\.\d+$/,'Version must be semantic; avoid pinning this test to a previous release');
  assert.equal(pkg.build.nsis.oneClick,false);
  assert.equal(pkg.build.nsis.perMachine,false);
  assert.equal(pkg.build.nsis.createStartMenuShortcut,true);
