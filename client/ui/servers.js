@@ -30,7 +30,7 @@
    target.innerHTML='<div class="server-empty server-error"><h2>Не удалось открыть серверы</h2>'+
     '<p>'+html(lastError)+'</p><small>Подключено: '+html(location.host)+'</small>'+
     '<button id="serverRetry" class="button">Повторить подключение</button>'+
-    (window.mpolDeviceSettings?'<button id="serverOpenConfig" class="button outlined">Настроить сервер</button>':'')+'</div>';
+    (typeof isDesktopClient!=='undefined'&&isDesktopClient?'<button id="serverOpenConfig" class="button outlined">Настроить сервер</button>':'')+'</div>';
    el('serverRetry').onclick=()=>reload().catch(displayError);
    el('serverOpenConfig')?.addEventListener('click',()=>{location.href='mpol://settings'});
   }
