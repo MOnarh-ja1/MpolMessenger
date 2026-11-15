@@ -222,7 +222,6 @@ function updateHeader(){if(!state.active)return;const c=state.active;
  $('chatName').textContent=c.name;$('chatPresence').textContent=c.is_saved?'Только вы':c.is_group?c.members.length+' участников':c.online?'● В сети':'Не в сети';
  $('archiveChat').classList.toggle('hidden',!!c.is_saved);
  $('deleteChat').classList.toggle('hidden',!!c.is_saved);
- $('openChatProfile').classList.toggle('hidden',c.is_group||c.is_saved||!c.peer_id);
  const head=$('chatPeerHeader');
  head.disabled=c.is_group||c.is_saved||!c.peer_id;
  head.title=head.disabled?'Информация о переписке':'Открыть профиль собеседника';
@@ -324,7 +323,7 @@ function notifyNewMessage(m){if(state.sound){try{const a=new(window.AudioContext
 function modal(title,content){$('modalTitle').textContent=title;$('modalContent').innerHTML=content;$('modalLayer').classList.remove('hidden')}
 function closeModal(){$('modalLayer').classList.add('hidden');$('modalContent').replaceChildren()}
 function findFriends(){modal('Найти пользователя',`<p>Введите уникальный ID, например <strong>MP1234567890</strong>.</p><label>ID пользователя<input id="friendId" placeholder="MP..." maxlength="24"/></label><button class="button" id="findUserBtn">Найти</button><div id="findResult"></div>`);$('findUserBtn').onclick=async()=>{
- const id=$('friendId').value.trim().toUpperCase();try{const u=await api('/users/'+encodeURIComponent(id));const b=$('findResult');b.innerHTML=`<div class="user-line">${avatar(u.avatar,u.online)}<div><strong>${esc(u.nick)}</strong><div class="secondary">${esc(u.id)}</div></div><button id="viewFoundProfile">Профиль</button><button id="inviteBtn">Добавить</button></div>`;$('viewFoundProfile').onclick=()=>showUserProfile(u);$('inviteBtn').onclick=async()=>{try{const r=await api('/friends/request',{method:'POST',body:{target_id:u.id}});toast(r.state==='accepted'?'Теперь вы друзья':'Заявка отправлена');closeModal();refreshAll()}catch(e){toast(errorText(e))}}}catch(e){toast(errorText(e))}};}
+ const id=$('friendId').value.trim().toUpperCase();try{const u=await api('/users/'+encodeURIComponent(id));const b=$('findResult');b.innerHTML=`<div class="user-line"><button id="openFoundUser" class="found-user-info" type="button" title="Открыть профиль собеседника">${avatar(u.avatar,u.online)}<span><strong>${esc(u.nick)}</strong><span class="secondary">${esc(u.id)}</span></span></button><button id="inviteBtn">Добавить</button></div>`;$('openFoundUser').onclick=()=>showUserProfile(u);$('inviteBtn').onclick=async()=>{try{const r=await api('/friends/request',{method:'POST',body:{target_id:u.id}});toast(r.state==='accepted'?'Теперь вы друзья':'Заявка отправлена');closeModal();refreshAll()}catch(e){toast(errorText(e))}}}catch(e){toast(errorText(e))}};}
 async function openUserProfile(id){
  try{const u=await api('/users/'+encodeURIComponent(id));showUserProfile(u)}
  catch(e){toast(errorText(e))}
@@ -448,14 +447,14 @@ async function copyAccountId(){
 function openRequests(){const html=state.requests.map(r=>`<div class="notice-item" data-request="${r.request_id}">${avatar(r.user.avatar)}<div class="name"><strong>${esc(r.user.nick)}</strong><div class="secondary">${esc(r.user.id)}</div></div><button data-answer="1">✓</button><button data-answer="0">✕</button></div>`).join('');modal('Заявки в друзья',html||'<p>Новых заявок пока нет.</p>');document.querySelectorAll('[data-request]').forEach(el=>el.querySelectorAll('[data-answer]').forEach(btn=>btn.onclick=async()=>{try{await api('/friends/requests/'+el.dataset.request,{method:'POST',body:{accept:btn.dataset.answer==='1'}});await refreshAll();openRequests()}catch(e){toast(errorText(e))}}))}
 function chatDetails(){if(!state.active)return;const c=state.active;
  let html=`<p><strong>${esc(c.name)}</strong><br>${c.is_group?'Группа · '+c.members.length+' участников':'Личная переписка'}</p>`;
- if(!c.is_group&&c.peer_id)html+='<button id="openChatDetailsProfile" class="button">Профиль собеседника</button>';
+
  if(!c.is_saved)html+='<button id="deleteFromChatDetails" class="button danger outlined">Удалить чат у себя</button>';
  if(c.is_group){const choices=state.friends.filter(x=>!c.members.includes(x.id));html+=`<div class="secondary">Добавить участника</div><label><select id="addMemberSelect"><option value="">Выберите друга</option>${choices.map(u=>`<option value="${esc(u.id)}">${esc(u.nick)}</option>`).join('')}</select></label><button class="button" id="addMemberBtn">Добавить в группу</button>`;
  html+=`<p class="secondary">Участники: ${c.members.map(esc).join(', ')}</p>`;
  if(c.role!=='owner')html+='<button id="leaveGroup" class="button outlined">Покинуть группу</button>';
  }
  modal('Информация о чате',html);
- $('openChatDetailsProfile')?.addEventListener('click',()=>openUserProfile(c.peer_id));
+
  $('deleteFromChatDetails')?.addEventListener('click',deleteActiveChat);
  $('addMemberBtn')?.addEventListener('click',async()=>{try{await api('/groups/'+c.id+'/members',{method:'POST',body:{user_id:$('addMemberSelect').value}});closeModal();await refreshAll();toast('Участник добавлен')}catch(e){toast(errorText(e))}});
  $('leaveGroup')?.addEventListener('click',async()=>{if(!confirm('Покинуть группу?'))return;try{await api('/groups/'+c.id+'/members/'+state.me.id,{method:'DELETE'});closeModal();state.active=null;$('openedChat').classList.add('hidden');$('emptyChat').classList.remove('hidden');await refreshAll()}catch(e){toast(errorText(e))}})
@@ -528,7 +527,6 @@ $('clearReply').onclick=()=>{state.reply=null;replyUpdate()};$('searchMessages')
 $('messageSearchInput').oninput=async e=>{try{if(!state.active)return;state.messages=await api('/chats/'+state.active.id+'/messages'+(e.target.value?'?search='+encodeURIComponent(e.target.value):''));renderMessages()}catch(err){toast(errorText(err))}};
 $('messageSearchClear').onclick=()=>{$('messageSearchInput').value='';$('messageSearchBar').classList.add('hidden');loadMessages()};$('chatInfo').onclick=chatDetails;
 $('deleteChat').onclick=deleteActiveChat;
-$('openChatProfile').onclick=()=>{if(state.active?.peer_id)openUserProfile(state.active.peer_id)};
 $('chatPeerHeader').onclick=()=>{if(state.active?.peer_id)openUserProfile(state.active.peer_id)};
 $('closeModal').onclick=closeModal;$('modalBackdrop').onclick=closeModal;document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
 setInterval(()=>{if(state.ws?.readyState===WebSocket.OPEN)state.ws.send(JSON.stringify({type:'ping'}));if(location.hostname==='127.0.0.1'||location.hostname==='localhost')fetch('/__ping').catch(()=>{})},15000);
