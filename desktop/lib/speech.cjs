@@ -5,7 +5,7 @@
 const {spawn}=require('node:child_process');
 const SYSTEM_SPEECH_SCRIPT=`
 $ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 try {
   Add-Type -AssemblyName System.Speech
   $installed = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers()
@@ -14,9 +14,9 @@ try {
     [Console]::WriteLine('{"ok":false,"code":"language","message":"Установите русский пакет распознавания речи Windows или введите команду текстом."}')
     exit 0
   }
-  $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($russian)
+  $engine = [System.Speech.Recognition.SpeechRecognitionEngine]::new($russian)
   try {
-    $grammar = New-Object System.Speech.Recognition.DictationGrammar
+    $grammar = [System.Speech.Recognition.DictationGrammar]::new()
     $engine.LoadGrammar($grammar)
     $engine.SetInputToDefaultAudioDevice()
     $result = $engine.Recognize([TimeSpan]::FromSeconds(10))
