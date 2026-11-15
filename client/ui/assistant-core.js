@@ -1,5 +1,6 @@
 'use strict';
-/* A deterministic, non-LLM command parser: no arbitrary code or server actions. */
+/* On-device intent resolver. Understands common spoken paraphrases without
+   sending text to an AI service or permitting arbitrary actions. */
 (function(root,factory){
  const api=factory();
  if(typeof module==='object'&&module.exports)module.exports=api;
@@ -11,43 +12,16 @@
   'с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh',
   'щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'
  };
- function key(raw){
-  const letters=String(raw||'').normalize('NFKC').toLowerCase()
-   .replace(/[ё]/g,'е').replace(/[^a-zа-я0-9]/g,'');
-  return Array.from(letters,x=>transliteration[x]??x).join('').replace(/w/g,'u');
+ function normalize(raw){
+  return String(raw||'').normalize('NFKC').toLowerCase().replace(/ё/g,'е')
+   .replace(/[^a-zа-я0-9\s-]/g,' ').replace(/[-\s]+/g,' ').trim();
  }
- function parse(input){
-  let s=String(input||'').trim().replace(/[.!?]+$/,'').trim();
-  s=s.replace(/^(?:эй[, ]+)?(?:mpol|эмпол|мпол|помощник)[, ]+/i,'').trim();
-  if(!s)return {kind:'help'};
-  if(/^(?:помощь|что ты умеешь|команды|помоги)$/i.test(s))return {kind:'help'};
-  if(/^(?:открой|покажи|перейди в?)\s+(?:мои\s+)?(?:друзья|список друзей)$/i.test(s))
-   return {kind:'tab',tab:'friends'};
-  if(/^(?:открой|покажи|перейди в?)\s+(?:мои\s+)?(?:сообщения|чаты|переписки)$/i.test(s))
-   return {kind:'tab',tab:'chats'};
-  if(/^(?:открой|покажи)\s+(?:мои\s+)?(?:группы)$/i.test(s))
-   return {kind:'tab',tab:'groups'};
-  if(/^(?:создай|создать|открой)\s+(?:сервер|голосовую комнату)/i.test(s))
-   return {kind:'future'};
-  const rules=[
-   ['video_call',/^(?:позвони\s+(?:по\s+видео|с\s+камерой)|(?:начни|сделай|запусти)\s+видео\s*звонок|видео\s*звонок|видеозвонок)\s+(.*)$/i],
-   ['call',/^(?:позвони|набери|начни\s+(?:голосовой\s+)?звонок|голосовой\s+звонок)(?:\s+(.*))?$/i],
-   ['group',/^(?:создай|создать|сделай|открой)\s+(?:новую\s+)?группу\s*(.*)$/i],
-   ['open_chat',/^(?:открой|покажи|перейди\s+в|найди|начни)\s+(?:личный\s+)?(?:чат|переписку|диалог)\s+(.*)$/i],
-   ['open_chat',/^(?:напиши|написать|открой\s+переписку)\s+(.*)$/i],
-   ['profile',/^(?:открой|покажи)\s+профиль\s+(.*)$/i],
-   ['find',/^(?:найди|ищи|поиск)\s+(?:пользователя|человека|друга)?\s*(.*)$/i]
-  ];
-  for(const [kind,re] of rules){
-   const m=re.exec(s);
-   if(!m)continue;
-   let target=(m[1]||'').replace(/^(?:с\s+)?(?:(?:пользователем|пользователя|пользователю|человеком|человека|другом|друга|другу|по\s+нику)\s+)?/i,'').trim();
-   target=target.replace(/\s+(?:пожалуйста|сейчас)$/i,'').trim();
-   if(target.length>80)return {kind:'help'};
-   if(!target&&kind==='group')return {kind:'group',target:''};
-   return target?{kind,target}:{kind:'missing',action:kind};
-  }
-  return {kind:'unknown'};
+ function key(raw){
+  const letters=normalize(raw).replace(/[^a-zа-я0-9]/g,'');
+  return Array.from(letters,x=>transliteration[x]??x).join('')
+   // "Nows" and "Nowus" are often pronounced "ноус".
+   .replace(/w/g,'u').replace(/ouu/g,'ou').replace(/uu+/g,'u')
+   .replace(/iy/g,'i').replace(/yi/g,'i');
  }
  function distance(a,b){
   if(Math.abs(a.length-b.length)>2)return 3;
@@ -78,7 +52,130 @@
    const old=results.get(id);
    if(!old||score>old.score)results.set(id,{...p,score});
   }
-  return [...results.values()].sort((a,b)=>b.score-a.score||String(a.nick).localeCompare(String(b.nick),'ru')).slice(0,8);
+  return [...results.values()]
+   .sort((a,b)=>b.score-a.score||String(a.nick).localeCompare(String(b.nick),'ru'))
+   .slice(0,8);
  }
- return {parse,key,matchContacts};
+ const patterns={
+  call:['позвони','позвонить','позванить','пазвони','набери','набрать','звони','звонить','вызови','вызвать'],
+  open_chat:['открой','открыть','открывай','покажи','показать','найди','найти','перейди','зайди','переключи','напиши','написать'],
+  group:['создай','создать','сделай','сделать','организуй','организовать'],
+  profile:['профиль','профиля','профилю','профил','страницу','страница'],
+  video:['видео','видеозвонок','видеовызов','видеосвязь','видезвонок','видеозванок','видеоразговор','камерой','камеру']
+ };
+ function inWords(word,dict){
+  if(dict.includes(word))return true;
+  if(word.length<5)return false;
+  return dict.some(s=>s.length>=5&&distance(word,s)<=1);
+ }
+ function clean(raw){
+  let s=normalize(raw);
+  for(let i=0;i<4;i++){
+   const old=s;
+   s=s.replace(/^(?:эй|слушай|ну|так|пожалуйста|давай|можешь|можно|мне|а|ты|хочу|надо|нужно|сейчас|короче)\s+/,'');
+   s=s.replace(/^(?:mpol|мпол|эмпол|эм пол|помощник|ассистент)\s+/,'');
+   if(s===old)break;
+  }
+  return s.replace(/\bпожалуйста\b/g,'').replace(/\s+/g,' ').trim();
+ }
+ function targetOf(words,from){
+  let parts=words.slice(from).join(' ').trim();
+  // Remove only leading connective/filler words; keep the actual nickname.
+  for(let i=0;i<5;i++){
+   const previous=parts;
+   parts=parts.replace(/^(?:мне|сейчас|пожалуйста|моему|моей|мой|с|со|к|для|по|в|на|этим|этого|этому|этой|моим|другу|друга|другом|друзьями|человеку|человека|человеком|пользователя|пользователем|пользователю|пользователь|по нику|ник|имени|по имени|имя)\s+/,'').trim();
+   if(previous===parts)break;
+  }
+  return parts.replace(/\s+(?:пожалуйста|сейчас|быстро|ладно)$/,'').trim().slice(0,80);
+ }
+ function parse(input){
+  const s=clean(input);
+  if(!s)return {kind:'help'};
+  if(/^(?:помощь|помоги|справка|что ты умеешь|команды|какие команды)$/.test(s))
+   return {kind:'help'};
+  const words=s.split(' ');
+  if(/^(?:создай|создать|сделай|открой|открыть|зайди)\s+(?:голосовой\s+)?(?:сервер|канал|комнату|серверы)\b/.test(s))
+   return {kind:'future'};
+  const videoIdx=words.findIndex(w=>inWords(w,patterns.video));
+  const callIdx=words.findIndex(w=>inWords(w,patterns.call));
+  const groupIdx=words.findIndex(w=>inWords(w,patterns.group));
+  const actionIdx=words.findIndex(w=>inWords(w,patterns.open_chat));
+  const profileIdx=words.findIndex(w=>inWords(w,patterns.profile));
+  const groupNoun=words.findIndex(w=>/^(?:группу|группы|группа|групповой|групповойчат|беседу|беседа)$/.test(w));
+  const chatNoun=words.findIndex(w=>/^(?:чат|чаты|чата|диалог|диалоге|диалогом|переписку|переписка|сообщения|сообщение)$/.test(w));
+  const targetNoun=words.findIndex(w=>/^(?:друзья|друзей|друзьями|контакты|контактов)$/.test(w));
+  const isDirectTab=(words.length<=5 &&
+    (targetNoun>=0 || /^(?:чаты|сообщения|переписки|группы)$/.test(words.at(-1))) &&
+    (actionIdx>=0||/^(?:друзья|контакты|группы|чаты|сообщения)$/.test(words[0])));
+  if(isDirectTab){
+   if(targetNoun>=0)return {kind:'tab',tab:'friends'};
+   if(words.some(w=>/^(?:группы)$/.test(w)))return {kind:'tab',tab:'groups'};
+   return {kind:'tab',tab:'chats'};
+  }
+  // "Открой профиль Ноуc", "Посмотри профиль Nows".
+  if(profileIdx>=0&&(
+   actionIdx>=0||/^(?:посмотри|посмотреть|найди|хочу|покажи)$/.test(words[0]))){
+   const target=targetOf(words,profileIdx+1);
+   return target?{kind:'profile',target}:{kind:'missing',action:'profile'};
+  }
+  // "Создай группу с...", "Сделай беседу...", or "Новая группа".
+  if(groupNoun>=0&&(groupIdx>=0 || /^(?:новую|новая|группу)$/.test(words[0]))){
+   const target=targetOf(words,groupNoun+1);
+   return {kind:'group',target};
+  }
+  if(videoIdx>=0&&(callIdx>=0 || /звон|вызов|связ/.test(words[videoIdx]) ||
+   /^(?:запусти|начни|сделай|организуй|включи)$/.test(words[0]))){
+   // Video calling via "позвони по видео ...", "видеозвонок с ..."
+   const after=Math.max(videoIdx,callIdx)+1;
+   const target=targetOf(words,after);
+   return target?{kind:'video_call',target}:{kind:'missing',action:'video_call'};
+  }
+  // "Позвони другу Nows", "Набери Nows", "Звони по видео Nows".
+  if(callIdx>=0){
+   const target=targetOf(words,callIdx+1);
+   return target?{kind:'call',target}:{kind:'missing',action:'call'};
+  }
+  // "Открой чат с ...", "Напиши Nows", "Покажи переписку ...".
+  if(actionIdx>=0){
+   const first=words[actionIdx];
+   if(/^(?:найди|найти|поищи|ищи|поиск)$/.test(first)&&chatNoun<0){
+    const target=targetOf(words,actionIdx+1);
+    return target?{kind:'find',target}:{kind:'missing',action:'find'};
+   }
+   if(chatNoun>=0){
+    const target=targetOf(words,chatNoun+1);
+    return target?{kind:'open_chat',target}:{kind:'missing',action:'open_chat'};
+   }
+   if(/^(?:напиши|написать|найди|найти|покажи|открой|открыть)$/.test(first)){
+    const target=targetOf(words,actionIdx+1);
+    return target?{kind:'open_chat',target}:{kind:'missing',action:'open_chat'};
+   }
+  }
+  if(/^(?:найди|найти|ищи|поиск|поищи)\b/.test(s)){
+   const target=targetOf(words,1);
+   return target?{kind:'find',target}:{kind:'missing',action:'find'};
+  }
+  return {kind:'unknown'};
+ }
+ function selectTranscript(candidates,people){
+  const list=(Array.isArray(candidates)?candidates:[candidates])
+   .map(c=>typeof c==='string'?c:(c&&typeof c.text==='string'?c.text:''))
+   .map(c=>c.trim()).filter(Boolean).slice(0,8);
+  if(!list.length)return '';
+  let best=list[0],score=-1;
+  for(const utterance of list){
+   const intent=parse(utterance);
+   const valid=!['unknown','help','missing'].includes(intent.kind);
+   let rank=valid?50:0;
+   if(intent.kind==='tab')rank+=12;
+   if(intent.target){
+    const matched=matchContacts(intent.target,people||[]);
+    if(matched[0])rank+=matched[0].score/2;
+    else rank+=3;
+   }
+   if(rank>score){score=rank;best=utterance}
+  }
+  return best;
+ }
+ return {normalize,parse,key,matchContacts,selectTranscript};
 });
