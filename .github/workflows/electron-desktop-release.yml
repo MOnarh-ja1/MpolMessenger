@@ -46,8 +46,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Electron security tests failed" }
           node --check ../client/ui/calls.js
           if ($LASTEXITCODE -ne 0) { throw "Call frontend syntax validation failed" }
-          node ../tests/test_call_audio.cjs
+          Push-Location ..
+          node tests/test_call_audio.cjs
           if ($LASTEXITCODE -ne 0) { throw "WebRTC call regression tests failed" }
+          Pop-Location
 
       - name: Verify shared MPOL icons and application icon
         run: |
