@@ -72,7 +72,12 @@
  async function doCommand(raw){
   if(!opened||!app()?.isReady?.())return notify('Для голосового помощника войдите в аккаунт MPOL.');
   const parsed=core.parse(raw);
-  if(parsed.kind==='unknown'||parsed.kind==='help')return notify('Команда не распознана. Попробуйте ещё раз.');
+  if(parsed.kind==='unknown'||parsed.kind==='help'){
+   // Useful diagnosis for a speech engine that substitutes an unexpected word.
+   // Display only to the local user; never upload voice transcripts to MPOL.
+   const heard=String(raw||'').trim().slice(0,110);
+   return notify('Услышал: «'+heard+'». Не понял действие — попробуйте иначе.');
+  }
   if(parsed.kind==='missing')return notify('Не расслышал ник пользователя. Произнесите команду снова.');
   if(parsed.kind==='future')return notify('Голосовые серверы будут добавлены в следующей версии.');
   if(parsed.kind==='tab'){app().showTab(parsed.tab);show(false);return}
@@ -143,7 +148,9 @@
     if(text)candidates.push(text);
    }
    // Prefer a recognizable command over the browser's first alternative.
-   const best=candidates.find(s=>!['unknown','help','missing'].includes(core.parse(s).kind))||candidates[0]||'';
+   const best=typeof core.selectTranscript==='function'?
+    core.selectTranscript(candidates,app()?.contacts?.()||[]):
+    (candidates.find(s=>!['unknown','help','missing'].includes(core.parse(s).kind))||candidates[0]||'');
    heard(best,seq).catch(()=>{});
    try{instance.stop()}catch{}
   };
@@ -185,7 +192,12 @@
   catch(e){result={ok:false,message:'Не удалось запустить распознавание Windows: '+String(e?.message||e)}}
   if(seq!==sequence||!opened)return;
   listening=false;
-  if(result?.ok&&result.text){await heard(result.text,seq);return}
+  if(result?.ok&&result.text){
+   const candidates=[result.text,...(Array.isArray(result.alternatives)?result.alternatives:[])];
+   const best=typeof core.selectTranscript==='function'?
+    core.selectTranscript(candidates,app()?.contacts?.()||[]):result.text;
+   await heard(best,seq);return
+  }
   appearance('idle');
   if(result?.code==='cancelled')return;
   notify(result?.message||'Голосовой ввод в Windows недоступен. Проверьте микрофон.');

@@ -5,7 +5,7 @@ const os=require('node:os');
 const path=require('node:path');
 const vm=require('node:vm');
 const {EventEmitter}=require('node:events');
-const {parse,key,matchContacts}=require('../client/ui/assistant-core.js');
+const {parse,key,matchContacts,selectTranscript}=require('../client/ui/assistant-core.js');
 const {startNativeRecognition,startOfflineRecognition}=require('../desktop/lib/speech.cjs');
 const html=fs.readFileSync('client/ui/index.html','utf8');
 const css=fs.readFileSync('client/ui/style.css','utf8');
@@ -24,7 +24,7 @@ const cases=[
 for(const [speech,kind,target] of cases){
  const result=parse(speech);
  assert.equal(result.kind,kind,speech);
- assert.equal(result.target,target,speech);
+ assert.equal(result.target?.toLowerCase(),target.toLowerCase(),speech);
 }
 assert.equal(parse('Открой друзья').kind,'tab');
 assert.equal(parse('Создай сервер').kind,'future');
@@ -32,6 +32,44 @@ assert.equal(parse('Позвони').kind,'missing');
 assert.equal(parse('Удали все аккаунты').kind,'unknown');
 assert.equal(key('Ноус'),key('Nows'));
 assert.equal(matchContacts('Ноус',[{id:'MPA',nick:'Nows'}])[0].id,'MPA');
+assert.equal(key('Nowus'),key('Ноус'),'Nowus should be matched by the phonetic nickname');
+assert.equal(matchContacts('наус',[{id:'MPA',nick:'Nowus'}])[0].id,'MPA');
+const voicePhrases=[
+ ['Эй, Мпол, открой, пожалуйста, чат с пользователем Ноус!','open_chat','ноус'],
+ ['Открой мне чат с наус','open_chat','наус'],
+ ['Можешь мне открыть чат с Нуус','open_chat','нуус'],
+ ['Открыть переписку с ноус','open_chat','ноус'],
+ ['Покажи диалог с NoWuS','open_chat','nowus'],
+ ['Открой чад с Ноус','open_chat','ноус'],
+ ['Открой разговор с ноус','open_chat','ноус'],
+ ['Напиши другу Ноуc','open_chat','ноуc'],
+ ['Найди человека по нику Nowus','find','nowus'],
+ ['Позвони другу Ноус','call','ноус'],
+ ['Пазвони другу Ноус','call','ноус'],
+ ['Набери пользователя Nows','call','nows'],
+ ['Начни голосовой звонок с Nows','call','nows'],
+ ['Сделай видео звонок с Nows','video_call','nows'],
+ ['Позвони по видео с Ноус','video_call','ноус'],
+ ['Позвони Ноус по видео','video_call','ноус'],
+ ['Видеозвонок с Ноус','video_call','ноус'],
+ ['Начни видеозвонок с Nows','video_call','nows'],
+ ['Создай новую группу с пользователем Nows','group','nows'],
+ ['Сделай беседу с ноус','group','ноус'],
+ ['Покажи профиль пользователя Nows','profile','nows'],
+ ['Открой профиль Ноус','profile','ноус']
+];
+for(const [phrase,kind,target] of voicePhrases){
+ const got=parse(phrase);
+ assert.equal(got.kind,kind,'wrong action for '+phrase);
+ assert.equal(got.target?.toLowerCase(),target,'wrong nickname for '+phrase);
+}
+assert.equal(parse('Покажи моих друзей').kind,'tab');
+assert.equal(parse('Открой чаты').kind,'tab');
+assert.equal(parse('Позвони').kind,'missing');
+assert.equal(parse('Удали всех друзей').kind,'unknown');
+const options=['Открой чады ноус','Открой чат с Ноус'];
+assert.equal(selectTranscript(options,[{id:'MPA',nick:'Nowus',friend:true}]),options[1]);
+assert.equal(selectTranscript(['пазвони другу наус','пазвони дружку'],[{id:'MPA',nick:'Nowus'}]),'пазвони другу наус');
 for(const id of ['assistantToggle','assistantPanel','assistantListen','assistantStatus'])
  assert.match(html,new RegExp('id="'+id+'"'));
 for(const id of ['assistantCommandForm','assistantCommand','assistantHeard','assistantBrowserSpeech','assistantChoices','assistantClose'])
@@ -79,14 +117,14 @@ function simulatedBrowser({native=false,transcript='Открой чат с Но�
   startCall:async()=>{}
  };
  const window={
-  MpolAssistantCore:{parse,key,matchContacts},
+  MpolAssistantCore:{parse,key,matchContacts,selectTranscript},
   mpolAssistantApp:api,
   SpeechRecognition:FakeRecognition,
   confirm:()=>true,
   addEventListener(){}
  };
  if(native)window.mpolNativeSpeech={
-  recognize:async()=>({ok:true,text:transcript}),cancel:async()=>{}
+  recognize:async()=>({ok:true,text:transcript,alternatives:['Открой чат с Ноус']}),cancel:async()=>{}
  };
  const document={
   getElementById:id=>elements.get(id),
@@ -121,6 +159,21 @@ async function checkUI(){
  exe.elements.get('assistantListen').onclick();
  await new Promise(setImmediate);await new Promise(setImmediate);
  assert.ok(exe.calls.includes('chat:MPA'),'Desktop native speech must reach the same real action');
+ const withAlternatives=simulatedBrowser();
+ withAlternatives.elements.get('assistantToggle').onclick();
+ withAlternatives.elements.get('assistantListen').onclick();
+ withAlternatives.getRecognizer().onresult({results:[[
+  {transcript:'неразборчивые слова'},{transcript:'открой чат с ноус'}
+ ]]});
+ await new Promise(setImmediate);await new Promise(setImmediate);
+ assert.ok(withAlternatives.calls.includes('chat:MPA'),'A valid alternate browser transcript should execute the chat command');
+ const unknown=simulatedBrowser();
+ unknown.elements.get('assistantToggle').onclick();
+ unknown.elements.get('assistantListen').onclick();
+ unknown.getRecognizer().onresult({results:[[{transcript:'абракадабра'}]]});
+ await new Promise(setImmediate);await new Promise(setImmediate);
+ assert.ok(unknown.status.some(x=>x.includes('абракадабра')),
+  'Show the actual heard words for debugging failed speech parsing');
 }
 async function checkWorker(){
  const fake=()=>{const c=new EventEmitter();c.stdout=new EventEmitter();c.stderr=new EventEmitter();c.kill=()=>{};
