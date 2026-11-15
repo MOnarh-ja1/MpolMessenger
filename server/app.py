@@ -167,7 +167,10 @@ class ProfilePhoto(Base):
     mime_type: Mapped[str] = mapped_column(String(30))
     data: Mapped[bytes] = mapped_column(LargeBinary)
 
-from server_spaces import make_space_models, install_space_routes
+try:
+    from .server_spaces import make_space_models, install_space_routes
+except ImportError:
+    from server_spaces import make_space_models, install_space_routes
 Space, SpaceMember, SpaceChannel, SpaceBan = make_space_models(Base)
 
 Base.metadata.create_all(engine)
