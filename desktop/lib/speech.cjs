@@ -74,7 +74,7 @@ function startOfflineRecognition({platform=process.platform,spawnProcess=spawn,
   child.on('close',()=>{
    if(done)return;
    const output=Buffer.concat(buffers).toString('utf8').trim();
-   const last=output.split(/\\r?\\n/).filter(Boolean).pop()||'';
+   const last=output.split(/\r?\n/).filter(Boolean).pop()||'';
    let result;try{result=JSON.parse(last)}catch{}
    if(result?.ok && typeof result.text==='string' && result.text.trim()){
     complete({ok:true,text:result.text.trim().slice(0,160),engine:'offline'});
