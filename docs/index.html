@@ -3,26 +3,93 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#080809">
-<meta http-equiv="refresh" content="1;url=https://mpol-messenger-api.onrender.com/">
-<title>MPOL Messenger — Войти</title>
+<meta name="theme-color" content="#0a0a0c">
+<meta name="description" content="MPOL Messenger — общайся, звони, создавай игровые серверы. Скачать для Windows или открыть на iPhone.">
+<title>MPOL Messenger — Скачать для Windows и iOS</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <style>
-*{box-sizing:border-box}html,body{height:100%;margin:0}
-body{font-family:Inter,'Segoe UI',Arial,sans-serif;background:radial-gradient(ellipse 80% 60% at 50% 110%,#202023 0%,#080809 78%);color:#eee;display:grid;place-items:center;padding:24px}
-.card{width:min(420px,100%);background:#131315;border:1px solid #2c2c30;border-radius:24px;padding:36px 30px;text-align:center;box-shadow:0 40px 110px #0009}
-.mark{width:76px;height:76px;display:grid;place-items:center;background:#202024;border:1px solid #3e3e42;border-radius:22px;margin:0 auto 20px;font-weight:900;font-size:44px;letter-spacing:-5px;padding-right:5px}
-.mark span{color:#858589}h1{font-size:28px;letter-spacing:-1.3px;margin:0 0 8px}h1 span{font-weight:400;color:#929296;font-size:20px}
-p{font-size:14px;line-height:1.6;color:#a7a7aa;margin:0 0 24px}
-a{display:block;background:#eee;color:#101011;text-decoration:none;padding:14px;border-radius:12px;font-weight:750}
-a:hover{background:white}.note{margin-top:22px;font-size:11px;color:#77777d}
+:root{color-scheme:dark;--bg:#09090b;--panel:#141416;--panel2:#1c1c20;--line:#29292e;--muted:#a1a1aa;--white:#f5f5f6;--accent:#c5c5d2}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--white);background:var(--bg);font:15px/1.6 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;overflow-x:hidden}a{color:inherit;text-decoration:none}button{font:inherit}a:focus-visible,button:focus-visible{outline:2px solid white;outline-offset:4px}
+body:before{content:"";position:absolute;z-index:-1;pointer-events:none;left:50%;top:30px;transform:translateX(-50%);width:min(1000px,120vw);height:650px;background:radial-gradient(ellipse at center,#38383e55,transparent 65%)}
+.container{width:min(1120px,calc(100% - 44px));margin:auto}
+header{height:80px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #ffffff0d}
+.brand{display:flex;align-items:center;gap:12px;font-weight:850;letter-spacing:-.9px;font-size:20px}.logo{width:44px;height:44px;display:grid;place-items:center;background:linear-gradient(145deg,#33343a,#151518);border:1px solid #595960;border-radius:13px;font-weight:950;font-size:27px;box-shadow:inset 0 1px #ffffff24}.brand small{font-size:13px;color:#b3b3bb;font-weight:550;letter-spacing:0}
+nav{display:flex;align-items:center;gap:27px;color:#b9b9bf;font-size:13px}nav a:hover{color:#fff}
+.hero{text-align:center;padding:96px 0 80px}.eyebrow{display:inline-flex;align-items:center;gap:9px;color:#bfc0c8;border:1px solid #3a3a40;border-radius:100px;padding:6px 14px;background:#ffffff08;font-size:12px}.pulse{width:7px;height:7px;border-radius:50%;background:#8fc7a8;box-shadow:0 0 15px #82d6a1}
+h1{font-size:clamp(45px,7vw,85px);line-height:1.06;letter-spacing:-5px;margin:28px 0 20px;font-weight:850}h1 em{font-style:normal;color:#8c8c99}.subtitle{max-width:630px;margin:0 auto;color:#a9a9b3;font-size:17px;line-height:1.75}
+.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:35px}.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:1px solid #38383d;border-radius:13px;padding:15px 23px;font-size:14px;font-weight:750;background:#242428;transition:transform .15s,background .15s;cursor:pointer;min-height:51px}.btn:hover{transform:translateY(-2px);background:#333338}.btn.primary{background:#f3f3f5;color:#141416;border-color:#f3f3f5}.btn.primary:hover{background:#d8d8df}.btn svg{width:19px;height:19px}
+.version{color:#797982;font-size:12px;margin-top:20px}.preview{margin:65px auto 0;max-width:920px;border-radius:23px;border:1px solid #48484e;padding:9px;background:linear-gradient(140deg,#34343a,#171719);box-shadow:0 40px 120px #000a}.window{border-radius:16px;background:#111113;border:1px solid #38383c;overflow:hidden;display:grid;grid-template-columns:215px 1fr;min-height:340px;text-align:left}.sidebar{background:#17171a;border-right:1px solid #2d2d32;padding:20px}.sidebrand{font-weight:800;margin-bottom:27px;letter-spacing:.5px}.sideitem{color:#9999a5;padding:12px;margin:5px 0;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:13px}.sideitem.active{color:white;background:#303035}.sideitem b{font-size:17px;width:20px;text-align:center}.chat{padding:26px 30px}.chathead{font-size:19px;font-weight:750;letter-spacing:-.5px;padding-bottom:22px;border-bottom:1px solid #2b2b30}.mock{display:flex;gap:12px;margin:23px 0}.avatar{width:38px;height:38px;flex:none;background:linear-gradient(145deg,#555560,#303038);border-radius:13px;display:grid;place-items:center;font-weight:700}.bubble{background:#252529;border:1px solid #323238;border-radius:3px 14px 14px 14px;padding:12px 16px;font-size:13px;color:#d4d4db;max-width:80%}.mock.me{justify-content:flex-end}.mock.me .bubble{border-radius:14px 3px 14px 14px;background:#35353d}.muted{color:var(--muted)}
+.section{padding:45px 0 35px;scroll-margin-top:30px}.section h2{font-size:clamp(28px,4vw,38px);letter-spacing:-1.5px;margin:0 0 8px}.section .intro{margin:0 0 25px;color:#9898a2}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card{padding:29px;background:linear-gradient(145deg,#1b1b1f,#121214);border:1px solid #303036;border-radius:19px}.card h3{margin:17px 0 8px;font-size:21px;letter-spacing:-.6px}.card p{margin:0 0 18px;color:#a6a6b0;font-size:14px}.tileicon{width:48px;height:48px;display:grid;place-items:center;border:1px solid #424249;background:#26262c;border-radius:14px;font-size:24px}.card .btn{width:100%;margin-top:7px}.detail{font-size:12px;color:#888892;margin-top:12px;min-height:20px}.steps{counter-reset:step;list-style:none;padding:0;margin:15px 0 0}.steps li{counter-increment:step;display:flex;gap:14px;padding:12px 0;color:#b5b5be;font-size:14px}.steps li:before{content:counter(step);width:26px;height:26px;display:grid;place-items:center;flex:0 0 26px;background:#303035;border-radius:9px;color:white;font-weight:700;font-size:12px}
+.note{border:1px solid #474044;background:#211b1d;border-radius:16px;padding:21px 25px;color:#d5c8c8;margin-top:18px;font-size:14px}.note strong{color:#fff}
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}.feature{background:#151518;border:1px solid #2b2b30;padding:24px;border-radius:15px}.feature h3{font-size:15px;margin:12px 0 5px}.feature p{font-size:13px;color:#9999a4;margin:0}.feature .ficon{font-size:23px}
+.release{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:25px;background:#1a1a1e;border:1px solid #38383d;border-radius:16px}.release strong{font-size:20px}.release p{margin:5px 0 0;font-size:13px;color:#a1a1a9}.footer{margin-top:70px;padding:28px 0 45px;border-top:1px solid #26262a;display:flex;justify-content:space-between;gap:15px;color:#878790;font-size:12px}.footer a{text-decoration:underline;text-underline-offset:3px}
+@media(max-width:720px){header{height:69px}nav{gap:13px}nav a:nth-child(2){display:none}.hero{padding:67px 0 40px}h1{letter-spacing:-2.8px}.subtitle{font-size:15px}.preview{margin-top:45px}.window{grid-template-columns:67px 1fr;min-height:290px}.sidebar{padding:15px 9px}.sidebrand{font-size:10px}.sideitem{font-size:0;justify-content:center;padding:10px 5px}.sideitem b{font-size:18px}.chat{padding:17px 12px}.chathead{font-size:16px}.bubble{font-size:12px}.grid,.features{grid-template-columns:1fr}.section{padding:33px 0 18px}.release,.footer{flex-direction:column;align-items:flex-start}.actions .btn{width:100%}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn{transition:none}}
 </style>
-<script>window.location.replace('https://mpol-messenger-api.onrender.com/');</script>
 </head>
-<body><main class="card">
-<div class="mark" aria-label="MPOL">M<span>.</span></div>
-<h1>MPOL <span>Messenger</span></h1>
-<p>Открываем оригинальный мессенджер с вашими аккаунтами, друзьями и переписками.</p>
-<a href="https://mpol-messenger-api.onrender.com/">Открыть мессенджер →</a>
-<div class="note">MPOL Black · Интернет-сервер работает отдельно от GitHub Pages</div>
-</main></body></html>
+<body>
+<div class="container">
+<header><a class="brand" href="#top"><span class="logo">M</span><span>MPOL <small>Messenger</small></span></a><nav><a href="#features">Возможности</a><a href="#download">Скачать</a><a href="#guide">Инструкция</a></nav></header>
+<main id="top">
+<section class="hero">
+<div class="eyebrow"><span class="pulse"></span> ОБЩЕНИЕ БЕЗ ЛИШНЕГО</div>
+<h1>Твой мир.<br><em>Твои люди.</em></h1>
+<p class="subtitle">Личные сообщения, друзья, звонки и игровые серверы в одном месте. MPOL Messenger — там, где начинается общение.</p>
+<div class="actions">
+<a class="btn primary" id="hero-download" href="https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v3.8.0-desktop/MpolMessengerSetup.exe"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 4l8-1v8H3zm10-1 8-1v9h-8zM3 13h8v8l-8-1zm10 0h8v9l-8-1z"/></svg> Скачать для Windows</a>
+<a class="btn" href="https://mpol-messenger-api.onrender.com/" target="_blank" rel="noopener noreferrer">Открыть на iPhone ↗</a>
+</div>
+<div class="version" id="hero-version">Windows 10/11 · x64 · релиз 3.8.0 · для iOS — веб-версия</div>
+<div class="preview" aria-label="Схематичный пример интерфейса, не скриншот приложения">
+<div class="window"><div class="sidebar"><div class="sidebrand">◈ MPOL</div><div class="sideitem active"><b>▤</b> Сообщения</div><div class="sideitem"><b>♙</b> Друзья</div><div class="sideitem"><b>◇</b> Заявки</div><div class="sideitem"><b>▦</b> Серверы</div><div class="sideitem"><b>⚙</b> Настройки</div></div><div class="chat"><div class="chathead">Общение начинается здесь <span class="muted">●</span></div><div class="mock"><span class="avatar">M</span><span class="bubble">Добро пожаловать в MPOL!<br>Присоединяйся к друзьям.</span></div><div class="mock me"><span class="bubble">На связи. Встретимся в голосовой комнате!</span></div><div class="mock"><span class="avatar">M</span><span class="bubble">Создаём свой сервер ✦</span></div></div></div>
+</div><div class="version">Иллюстрация интерфейса · не фактический скриншот</div>
+</section>
+<section class="section" id="features"><h2>Всё для связи</h2><p class="intro">Главные возможности MPOL Messenger.</p><div class="features">
+<div class="feature"><span class="ficon">◉</span><h3>Личные сообщения</h3><p>Чаты, друзья и заявки в одном интерфейсе.</p></div>
+<div class="feature"><span class="ficon">◈</span><h3>Голос и видео</h3><p>Звонки с микрофоном и камерой; качество зависит от сети.</p></div>
+<div class="feature"><span class="ficon">▦</span><h3>Игровые серверы</h3><p>Комнаты, роли и права участников, сообщества для друзей.</p></div></div></section>
+<section class="section" id="download"><h2>Скачай MPOL</h2><p class="intro">Выбери устройство. На Windows доступны установка и запуск без установщика.</p>
+<div class="grid">
+<div class="card"><div class="tileicon">⊞</div><h3>Windows 10 / 11</h3><p>Полноценное приложение в отдельном окне. Рекомендуем установщик для обычного использования.</p>
+<a class="btn primary" id="setup" href="https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v3.8.0-desktop/MpolMessengerSetup.exe">↓ Скачать установщик EXE</a>
+<a class="btn" id="portable" href="https://github.com/MOnarh-ja1/MpolMessenger/releases/download/v3.8.0-desktop/MpolMessenger.exe">↓ Скачать обычный EXE</a><div class="detail" id="win-info">Версия 3.8.0 · 64-битная Windows</div></div>
+<div class="card"><div class="tileicon">◧</div><h3>iPhone / iOS</h3><p>Устанавливать EXE не нужно. Открой веб-версию в Safari и добавь её на экран «Домой» как ярлык приложения.</p>
+<a class="btn primary" href="https://mpol-messenger-api.onrender.com/" target="_blank" rel="noopener noreferrer">↗ Открыть MPOL в Safari</a><a class="btn" href="#guide">Как добавить на главный экран</a><div class="detail">iOS · Safari · веб-версия (не App Store)</div></div>
+</div><div class="note"><strong>Важно: сейчас для подключения может требоваться VPN.</strong> Если MPOL не загружается в вашей сети, подключите работающий VPN и откройте приложение снова. Вызовы и голосовые комнаты могут работать нестабильно в отдельных сетях даже с VPN. Мы не заявляем, что доступ без VPN уже исправлен.</div></section>
+<section class="section" id="guide"><h2>Как начать</h2><p class="intro">Короткие инструкции для двух платформ.</p><div class="grid">
+<div class="card"><h3>⊞ Установка на Windows</h3><ol class="steps"><li>Нажми «Скачать установщик EXE».</li><li>Открой скачанный MpolMessengerSetup.exe и следуй инструкциям.</li><li>Запусти MPOL из меню «Пуск» или ярлыка, затем войди в аккаунт.</li><li>Если сервер не отвечает, проверь интернет и подключение через VPN.</li></ol><div class="detail">Файлы загружаются напрямую из официального GitHub Releases. При предупреждении Windows проверь источник и подпись файла перед запуском.</div></div>
+<div class="card"><h3>◧ Добавление на iPhone</h3><ol class="steps"><li>На iPhone открой сайт MPOL через кнопку «Открыть в Safari».</li><li>В Safari нажми «Поделиться» (квадрат со стрелкой вверх).</li><li>Выбери «На экран Домой» / «Добавить на экран Домой».</li><li>Подтверди «Добавить», затем открой ярлык на главном экране.</li></ol><div class="detail">Для микрофона и камеры разреши доступ в Safari. Звонки могут не приходить, когда браузер закрыт или телефон заблокирован.</div></div></div></section>
+<section class="section" id="updates"><h2>Обновления</h2><p class="intro">Сайт проверяет новые релизы GitHub при открытии. Если выйдет новая версия EXE, ссылки обновятся автоматически.</p><div class="release"><div><strong id="release-name">MPOL 3.8.0</strong><p id="release-desc">Последняя известная версия. Проверяем GitHub…</p></div><a class="btn" id="release-link" href="https://github.com/MOnarh-ja1/MpolMessenger/releases/tag/v3.8.0-desktop" target="_blank" rel="noopener noreferrer">Все сведения о релизе ↗</a></div><div class="detail" id="check-status" role="status" aria-live="polite"></div>
+</section>
+</main><footer class="footer"><span>© MPOL Messenger · Независимый проект</span><span><a href="https://github.com/MOnarh-ja1/MpolMessenger/releases" target="_blank" rel="noopener noreferrer">Все версии на GitHub</a> · <a href="https://mpol-messenger-api.onrender.com/" target="_blank" rel="noopener noreferrer">Веб-мессенджер</a></span></footer>
+</div>
+<script>
+(function(){
+'use strict';
+var owner='MOnarh-ja1',repo='MpolMessenger';
+var fallback='https://github.com/'+owner+'/'+repo+'/releases';
+var api='https://api.github.com/repos/'+owner+'/'+repo+'/releases?per_page=30';
+function el(id){return document.getElementById(id)}
+function filesize(n){return (n/1048576).toFixed(1)+' МБ'}
+function cleanTag(tag){return String(tag||'').replace(/^v/i,'').replace(/-desktop$/i,'')}
+fetch(api,{headers:{Accept:'application/vnd.github+json'},cache:'no-store'})
+.then(function(r){if(!r.ok)throw Error('GitHub: '+r.status);return r.json()})
+.then(function(releases){
+var release=releases.find(function(r){return !r.draft&&Array.isArray(r.assets)&&r.assets.some(function(a){return /^MpolMessengerSetup\.exe$/i.test(a.name)})});
+if(!release)throw Error('Нет релиза с установщиком');
+var assets=release.assets;var setup=assets.find(function(a){return /^MpolMessengerSetup\.exe$/i.test(a.name)});var portable=assets.find(function(a){return /^MpolMessenger\.exe$/i.test(a.name)});
+el('setup').href=setup.browser_download_url;el('hero-download').href=setup.browser_download_url;
+if(portable)el('portable').href=portable.browser_download_url;
+else{el('portable').href=release.html_url;el('portable').textContent='Посмотреть другие файлы релиза ↗'}
+var v=cleanTag(release.tag_name);
+el('release-name').textContent='MPOL '+v;
+el('hero-version').textContent='Windows 10/11 · x64 · версия '+v+' · для iOS — веб-версия';
+el('win-info').textContent='Версия '+v+' · установщик '+filesize(setup.size)+(portable?' · EXE '+filesize(portable.size):'');
+el('release-desc').textContent=(release.prerelease?'Предварительный релиз':'Публичный релиз')+' · '+new Date(release.published_at||release.created_at).toLocaleDateString('ru-RU')+' · загрузка с GitHub';
+el('release-link').href=release.html_url;
+el('check-status').textContent='Данные актуальны на момент открытия страницы.';
+}).catch(function(e){el('release-desc').textContent='Не удалось проверить GitHub. Кнопки ведут на проверенную версию 3.8.0.';el('check-status').textContent='Проверка обновлений недоступна: '+e.message+'. '+ 'Откройте список релизов на GitHub.';el('release-link').href=fallback;});
+})();
+</script>
+</body></html>
