@@ -8,7 +8,7 @@ const { SERVER_ORIGIN, normalizeServerOrigin, isMpolUrl, canOpenExternal,
 const {loadPermissionGrants,savePermissionGrants,hasPermission,
   grantPermissions,revokeMediaPermissions}=require('./lib/media-permissions.cjs');
 
-const APP_VERSION = '3.5.0';
+const APP_VERSION = '3.6.0';
 const { offerDesktopUpdate } = require('./lib/updater.cjs');
 let activeServerOrigin=SERVER_ORIGIN;
 const isTrustedUrl=url=>isMpolUrl(url,activeServerOrigin);
