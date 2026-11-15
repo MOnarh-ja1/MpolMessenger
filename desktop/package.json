@@ -1,7 +1,7 @@
 {
   "name": "mpol-messenger-desktop",
   "productName": "Mpol Messenger",
-  "version": "3.6.0",
+  "version": "3.7.0",
   "description": "Native Windows desktop client for existing MPOL Messenger online accounts",
   "main": "main.cjs",
   "private": true,
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test tests/*.test.cjs",
-    "lint": "node --check main.cjs && node --check lib/security.cjs && node --check lib/media-permissions.cjs && node --check lib/updater.cjs && node --check preload.cjs && node --check server-settings.js && node --check offline.js",
+    "lint": "node --check main.cjs && node --check lib/security.cjs && node --check lib/media-permissions.cjs && node --check lib/speech.cjs && node --check lib/updater.cjs && node --check preload.cjs && node --check server-settings.js && node --check offline.js",
     "dist:win": "electron-builder --win nsis portable --x64 --publish never"
   },
   "devDependencies": {
