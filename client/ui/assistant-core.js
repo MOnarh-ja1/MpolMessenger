@@ -76,7 +76,7 @@
    s=s.replace(/^(?:mpol|мпол|эмпол|эм пол|помощник|ассистент)\s+/,'');
    if(s===old)break;
   }
-  return s.replace(/\bпожалуйста\b/g,'').replace(/\s+/g,' ').trim();
+  return s.replace(/(^|\s)пожалуйста(?=\s|$)/g,' ').replace(/\s+/g,' ').trim();
  }
  function targetOf(words,from){
   let parts=words.slice(from).join(' ').trim();
