@@ -16,6 +16,23 @@ def emit(ok, **fields):
     sys.stdout.flush()
 
 
+
+def alternatives_from_result(raw):
+    """Vosk with SetMaxAlternatives() returns alternatives, not top-level text."""
+    try:
+        result = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    alternatives = result.get("alternatives", [])
+    if alternatives:
+        return [
+            entry.get("text", "").strip() for entry in alternatives
+            if isinstance(entry, dict) and entry.get("text", "").strip()
+        ][:3]
+    text = result.get("text", "").strip()
+    return [text] if text else []
+
+
 def recognize(model_path, max_seconds=9):
     try:
         import sounddevice as sd
@@ -58,28 +75,53 @@ def recognize(model_path, max_seconds=9):
             rate = default_rate
 
         recognizer = KaldiRecognizer(model, float(rate))
-        # Dictation instead of a fixed grammar permits friends' spoken nicknames.
+        recognizer.SetMaxAlternatives(3)
         timeout = time.monotonic() + max_seconds
-        words = []
+        segments = []
+        last_segment_at = None
+
         with sd.RawInputStream(samplerate=rate, blocksize=4000,
                                channels=1, dtype="int16", callback=on_audio):
             while time.monotonic() < timeout:
+                if last_segment_at and time.monotonic() - last_segment_at >= .75:
+                    break
                 try:
-                    chunk = audio_chunks.get(timeout=min(.3, max(.01, timeout - time.monotonic())))
+                    chunk = audio_chunks.get(timeout=min(.2, max(.01, timeout - time.monotonic())))
                 except queue.Empty:
                     continue
                 if recognizer.AcceptWaveform(chunk):
-                    phrase = json.loads(recognizer.Result()).get("text", "").strip()
-                    if phrase:
-                        words.append(phrase)
-                        break
-            final = json.loads(recognizer.FinalResult()).get("text", "").strip()
-            if final and not words:
-                words.append(final)
-        transcript = " ".join(words).strip()[:160]
-        if transcript:
-            return {"ok": True, "text": transcript, "engine": "vosk-ru-offline"}
-        return {"ok": False, "code": "no-speech", "message": "Не удалось разобрать голос. Нажмите и повторите команду."}
+                    variants = alternatives_from_result(recognizer.Result())
+                    if variants:
+                        segments.append(variants)
+                        # Let the person finish a nickname after an early pause.
+                        last_segment_at = time.monotonic()
+                    continue
+
+            final_variants = alternatives_from_result(recognizer.FinalResult())
+            if final_variants:
+                segments.append(final_variants)
+
+        if not segments:
+            return {"ok": False, "code": "no-speech",
+                    "message": "Не удалось разобрать голос. Нажмите и повторите команду."}
+
+        primary = " ".join(part[0] for part in segments).strip()[:160]
+        options = [primary]
+        # Try alternative hypotheses for ambiguous utterances without
+        # requiring an AI API or a server-side speech upload.
+        for index, part in enumerate(segments):
+            for other in part[1:]:
+                phrase = " ".join(
+                    other if i == index else item[0]
+                    for i, item in enumerate(segments)
+                ).strip()[:160]
+                if phrase and phrase not in options:
+                    options.append(phrase)
+        if primary:
+            return {"ok": True, "text": primary,
+                    "alternatives": options[1:6], "engine": "vosk-ru-offline"}
+        return {"ok": False, "code": "no-speech",
+                "message": "Не удалось разобрать голос. Нажмите и повторите команду."}
     except Exception as exc:
         return {"ok": False, "code": "microphone", "message": "Нет доступа к микрофону или он занят другим приложением.", "details": type(exc).__name__}
 
