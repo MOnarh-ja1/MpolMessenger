@@ -1,235 +1,208 @@
 'use strict';
-/* MPOL assistant: explicit push-to-talk and allowlisted social commands.
-   Voice stays on-device when a Windows ru-RU recognizer is installed.
-   Browser speech may use its provider's recognition service. */
+/* Push-to-talk MPOL: one accessible round button. Speech is processed only
+   after the user's click and never recorded in the background. */
 (() => {
  const byId=id=>document.getElementById(id);
  const core=window.MpolAssistantCore;
  const app=()=>window.mpolAssistantApp;
- if(!core||!byId('assistantPanel'))return;
- const ui={
-  panel:byId('assistantPanel'),toggle:byId('assistantToggle'),close:byId('assistantClose'),
-  orb:byId('assistantOrb'),status:byId('assistantStatus'),
-  heard:byId('assistantHeard'),listen:byId('assistantListen'),
-  browser:byId('assistantBrowserSpeech'),
-  form:byId('assistantCommandForm'),input:byId('assistantCommand'),
-  choices:byId('assistantChoices')
+ const panel=byId('assistantPanel'),launcher=byId('assistantToggle');
+ const button=byId('assistantListen'),live=byId('assistantStatus');
+ if(!core||!panel||!launcher||!button)return;
+
+ let opened=false,listening=false,busy=false,sequence=0,recognition=null,watchdog=null;
+ const notify=msg=>{
+  const message=String(msg||'').slice(0,260);
+  live.textContent=message;
+  if(typeof toast==='function')toast(message);
  };
- let open=false,active=false,browserRecognition=null,sequence=0;
- const browserSpeechAvailable=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
- const clearChoices=()=>{ui.choices.replaceChildren();ui.choices.classList.add('hidden')};
- function status(text,mode='idle'){
-  ui.status.textContent=text;
-  ui.orb.dataset.state=mode;
-  ui.listen.textContent=mode==='listening'?'■ Остановить':'🎙 Говорить';
+ function appearance(mode){
+  button.dataset.state=mode;
+  button.setAttribute('aria-pressed',String(mode==='listening'));
+  const label=mode==='listening'?'Остановить прослушивание':
+    mode==='working'?'Выполняется команда':'Начать голосовую команду';
+  button.setAttribute('aria-label',label);
+  button.title=label;
+  live.textContent=label;
  }
- function showHeard(text){
-  ui.heard.textContent=String(text).slice(0,180);
-  ui.heard.classList.toggle('hidden',!text);
- }
- function stopListening(){
+ function abort(){
   sequence++;
-  active=false;
-  try{browserRecognition?.abort()}catch{}
-  browserRecognition=null;
+  listening=false;busy=false;
+  if(watchdog){clearTimeout(watchdog);watchdog=null}
+  try{recognition?.abort()}catch{}
+  recognition=null;
   window.mpolNativeSpeech?.cancel?.().catch?.(()=>{});
-  ui.browser.classList.add('hidden');
-  status('Прослушивание остановлено');
+  appearance('idle');
  }
- function setOpen(next){
-  if(open===next)return;
-  open=next;ui.panel.classList.toggle('hidden',!open);
-  ui.toggle.setAttribute('aria-expanded',String(open));
-  ui.toggle.classList.toggle('active',open);
-  if(!open){if(active)stopListening();clearChoices()}
-  else{
-   status('Готов слушать. Нажмите «Говорить» или напишите команду.');
-   ui.panel.focus({preventScroll:true});
-  }
+ function show(next){
+  if(next===opened)return;
+  opened=next;panel.classList.toggle('hidden',!next);
+  launcher.setAttribute('aria-expanded',String(next));
+  launcher.classList.toggle('active',next);
+  if(!next){abort();launcher.focus?.({preventScroll:true})}
+  else {appearance('idle');button.focus?.({preventScroll:true})}
  }
- function actionButton(text,fn,variant=''){
-  const b=document.createElement('button');
-  b.type='button';b.className='mpol-assistant-choice '+variant;
-  b.textContent=text;
-  b.onclick=async()=>{
-   b.disabled=true;
-   try{await fn()}catch(e){status(String(e?.message||e));b.disabled=false}
-  };
-  ui.choices.append(b);ui.choices.classList.remove('hidden');
-  return b;
- }
- function showPeople(people,fn){
-  clearChoices();
-  for(const u of people.slice(0,8))
-   actionButton(u.nick+' · '+u.id,()=>fn(u));
- }
- function contactList(){
-  return app()?.contacts?.()||[];
- }
- async function searchMatches(target,preferFriends=false){
-  const known=contactList();
-  let matches=core.matchContacts(target,known);
-  const exact=matches.filter(u=>u.score>=100);
-  if(exact.length===1)return exact;
-  // Resolve what the user asks for, without bulk downloading all accounts.
-  if(String(target).trim().length>=3){
+ async function findPeople(name,forGroup){
+  const local=app().contacts()||[];
+  let found=core.matchContacts(name,local);
+  const exact=found.filter(x=>x.score>=100);
+  if(exact.length!==1 && name.trim().length>=3){
    try{
-    const remote=await app()?.searchUsers?.(target);
-    const combined=[...known,...(Array.isArray(remote)?remote:[])];
-    matches=core.matchContacts(target,combined);
-   }catch{
-    // Older server versions may not yet expose the new search endpoint.
+    const other=await app().searchUsers(name);
+    if(Array.isArray(other))found=core.matchContacts(name,[...local,...other]);
+   }catch{/* Older MPOL server: local friends still work. */}
+  }
+  if(forGroup){
+   const friends=new Set(local.filter(x=>x.friend).map(x=>x.id));
+   found=found.filter(x=>friends.has(x.id));
+  }
+  return found;
+ }
+ // Only use the existing MPOL confirmation / selection dialogs.
+ function confirmAction(question){
+  return typeof window.confirm==='function'&&window.confirm(question);
+ }
+ async function chooseMatch(matches){
+  if(matches.length===1)return matches[0];
+  const best=matches[0]?.score||0;
+  if(matches.length>1&&best>=95&&best-matches[1].score>=15)return matches[0];
+  if(typeof app().chooseContact==='function')return app().chooseContact(matches);
+  notify('Найдено несколько похожих ников. Уточните имя.');
+  return null;
+ }
+ async function doCommand(raw){
+  if(!opened||!app()?.isReady?.())return notify('Для голосового помощника войдите в аккаунт MPOL.');
+  const parsed=core.parse(raw);
+  if(parsed.kind==='unknown'||parsed.kind==='help')return notify('Команда не распознана. Попробуйте ещё раз.');
+  if(parsed.kind==='missing')return notify('Не расслышал ник пользователя. Произнесите команду снова.');
+  if(parsed.kind==='future')return notify('Голосовые серверы будут добавлены в следующей версии.');
+  if(parsed.kind==='tab'){app().showTab(parsed.tab);show(false);return}
+  if(parsed.kind==='group'&&!parsed.target){app().createGroupWith(null);show(false);return}
+
+  const found=await findPeople(parsed.target,parsed.kind==='group');
+  if(!opened)return;
+  if(!found.length)return notify('Пользователь «'+parsed.target+'» не найден.');
+  const chosen=await chooseMatch(found);
+  if(!opened||!chosen)return;
+  if(parsed.kind==='profile'||parsed.kind==='find'){
+   app().showProfile(chosen);show(false);return;
+  }
+  if(!app().isFriend(chosen.id)){
+   if(confirmAction('Пользователь '+chosen.nick+' не в друзьях. Отправить заявку?')){
+    await app().sendFriendRequest(chosen);
+    show(false);
    }
-  }
-  if(preferFriends){
-   const friendIds=new Set(known.filter(u=>u.friend).map(u=>u.id));
-   matches=matches.filter(u=>friendIds.has(u.id));
-  }
-  return matches;
- }
- async function executeForUser(command,user){
-  if(!app()?.isReady?.())return status('Войдите в аккаунт MPOL, чтобы пользоваться помощником.');
-  clearChoices();
-  const friend=app().isFriend(user.id);
-  if(command.kind==='find'||command.kind==='profile'){
-   app().showProfile(user);
-   setOpen(false);
    return;
   }
-  if(!friend){
-   status('Сначала нужно добавить '+user.nick+' в друзья.');
-   actionButton('Отправить заявку: '+user.nick,async()=>{
-    await app().sendFriendRequest(user);
-    clearChoices();status('Заявка отправлена. После принятия можно открыть чат или позвонить.');
-   },'primary');
-   return;
+  if(parsed.kind==='open_chat'){
+   await app().openChat(chosen);show(false);return;
   }
-  if(command.kind==='open_chat'){
-   status('Открываю чат с '+user.nick+'…','working');
-   await app().openChat(user);
-   setOpen(false);
-  }else if(command.kind==='group'){
-   app().createGroupWith(user);
-   setOpen(false);
-  }else if(command.kind==='call'||command.kind==='video_call'){
-   const video=command.kind==='video_call';
-   status('Подтвердите '+(video?'видеозвонок':'звонок')+' пользователю '+user.nick+'.');
-   actionButton('Подтвердить '+(video?'видеозвонок':'звонок')+' · '+user.nick,async()=>{
-    status('Открываю '+(video?'видеозвонок':'звонок')+'…','working');
-    await app().startCall(user,video?'video':'audio');
-    setOpen(false);
-   },'primary');
-   actionButton('Отмена',()=>{clearChoices();status('Звонок отменён.')});
+  if(parsed.kind==='group'){
+   app().createGroupWith(chosen);show(false);return;
+  }
+  if(parsed.kind==='call'||parsed.kind==='video_call'){
+   const type=parsed.kind==='video_call'?'видеозвонок':'голосовой звонок';
+   if(!confirmAction('Начать '+type+' с '+chosen.nick+'?'))return;
+   // Requires explicit confirmation before actual microphone activation and dialing.
+   await app().startCall(chosen,parsed.kind==='video_call'?'video':'audio');
+   show(false);
   }
  }
- async function submitCommand(value){
-  if(!open)setOpen(true);
-  const command=core.parse(value);
-  showHeard(String(value||'').trim());
-  clearChoices();
-  ui.browser.classList.add('hidden');
-  if(!app()?.isReady?.())return status('Войдите в аккаунт MPOL.');
-  if(command.kind==='help'||command.kind==='unknown'){
-   status(command.kind==='unknown'?'Не понял команду. Примеры:':'Примеры команд:');
-   actionButton('Открой чат с Nows',()=>submitCommand('Открой чат с Nows'));
-   actionButton('Позвони Nows',()=>submitCommand('Позвони Nows'));
-   actionButton('Создай группу с Nows',()=>submitCommand('Создай группу с Nows'));
-   return;
-  }
-  if(command.kind==='future')return status('Голосовые комнаты и серверы — следующий этап MPOL. Сейчас можно создавать групповые чаты.');
-  if(command.kind==='tab'){
-   app().showTab(command.tab);setOpen(false);return;
-  }
-  if(command.kind==='missing')return status('Укажите ник пользователя или его ID. Например: «Открой чат с Nows».');
-  if(command.kind==='group'&&!command.target){
-   app().createGroupWith(null);setOpen(false);return;
-  }
-  status('Ищу пользователя «'+command.target+'»…','working');
-  let matches=await searchMatches(command.target,command.kind==='group');
-  if(!open)return;
-  if(!matches.length){
-   status('Пользователь не найден. Проверьте написание ника или добавьте его в друзья.');
-   return;
-  }
-  const best=matches[0].score;
-  // Ambiguous voice recognition should never dial the wrong person.
-  if(matches.length===1 || (best>=95 && matches[1].score<best-12)){
-   try{await executeForUser(command,matches[0])}catch(e){status(e.message||'Не удалось выполнить команду')}
-   return;
-  }
-  status('Нашёл несколько похожих ников. Выберите нужного человека.');
-  showPeople(matches.filter(x=>x.score>=Math.max(56,best-22)),user=>executeForUser(command,user));
+ async function heard(text,seq){
+  if(seq!==sequence||!opened)return;
+  listening=false;busy=true;
+  if(watchdog){clearTimeout(watchdog);watchdog=null}
+  appearance('working');
+  const value=String(text||'').trim();
+  if(!value){busy=false;appearance('idle');return notify('Не расслышал команду. Повторите.')}
+  try{await doCommand(value)}
+  catch(e){if(opened)notify(e?.message||'Не удалось выполнить команду.')}
+  finally{if(seq===sequence){busy=false;appearance('idle')}}
  }
- async function processTranscript(raw,seq){
-  if(!open||seq!==sequence)return;
-  active=false;browserRecognition=null;status('Распознано. Выполняю команду…','working');
-  const text=String(raw||'').trim();
-  if(!text)return status('Не расслышал команду. Попробуйте снова.');
-  ui.input.value=text;
-  await submitCommand(text);
- }
- function startBrowserRecognition(){
-  if(!browserSpeechAvailable)return status('В этом браузере нет распознавания голоса. Используйте текстовый ввод.');
+ function browserStart(){
   const Ctor=window.SpeechRecognition||window.webkitSpeechRecognition;
-  const seq=++sequence;
-  const r=new Ctor();browserRecognition=r;active=true;
-  r.lang='ru-RU';r.continuous=false;r.interimResults=false;r.maxAlternatives=1;
-  status('Слушаю… Скажите команду.','listening');
-  r.onresult=event=>{
-   const value=event.results?.[0]?.[0]?.transcript||'';
-   processTranscript(value,seq);
+  if(!Ctor){
+   appearance('idle');
+   notify('В этом браузере нет голосового распознавания. Откройте MPOL в Chrome или Microsoft Edge.');
+   return;
+  }
+  let instance;
+  try{instance=new Ctor()}catch{
+   appearance('idle');notify('Не удалось включить распознавание речи.');return;
+  }
+  const seq=++sequence;recognition=instance;listening=true;
+  instance.lang='ru-RU';instance.continuous=false;
+  instance.interimResults=false;instance.maxAlternatives=3;
+  let delivered=false;
+  instance.onresult=event=>{
+   if(seq!==sequence||delivered)return;
+   delivered=true;
+   const results=event.results?.[0];
+   const candidates=[];
+   for(let i=0;i<(results?.length||0);i++){
+    const text=String(results[i]?.transcript||'').trim();
+    if(text)candidates.push(text);
+   }
+   // Prefer a recognizable command over the browser's first alternative.
+   const best=candidates.find(s=>!['unknown','help','missing'].includes(core.parse(s).kind))||candidates[0]||'';
+   heard(best,seq).catch(()=>{});
+   try{instance.stop()}catch{}
   };
-  r.onerror=event=>{
+  instance.onerror=event=>{
    if(seq!==sequence)return;
-   active=false;
-   const reason=event.error==='not-allowed'?'Нет доступа к микрофону.':
-    event.error==='network'?'Распознавание браузера недоступно в этой сети.':
-    'Не удалось распознать голос ('+String(event.error||'ошибка')+').';
-   status(reason+' Можно ввести команду текстом.');
+   listening=false;recognition=null;
+   if(watchdog)clearTimeout(watchdog);watchdog=null;
+   appearance('idle');
+   if(event.error==='aborted')return;
+   const messages={
+    'not-allowed':'Доступ к микрофону запрещён в настройках браузера.',
+    'audio-capture':'Микрофон не найден или занят.',
+    'no-speech':'Речь не обнаружена. Нажмите на круг и повторите.',
+    'network':'Речевой сервис браузера недоступен. Проверьте сеть или используйте EXE с офлайн-распознаванием.',
+    'language-not-supported':'Русское распознавание недоступно в этом браузере.'
+   };
+   notify(messages[event.error]||'Ошибка голосового ввода. Попробуйте снова.');
   };
-  r.onend=()=>{
+  instance.onend=()=>{
    if(seq!==sequence)return;
-   if(active){active=false;status('Не расслышал команду. Попробуйте ещё раз.')}
+   recognition=null;
+   if(watchdog)clearTimeout(watchdog);watchdog=null;
+   if(listening&&!delivered){listening=false;appearance('idle');notify('Речь не распознана. Нажмите на круг и повторите.')}
   };
-  try{r.start()}catch(e){active=false;status('Не удалось включить микрофон: '+e.message)}
+  appearance('listening');
+  watchdog=setTimeout(()=>{if(seq!==sequence||!listening)return;try{instance.stop()}catch{}},14000);
+  try{instance.start()}
+  catch(e){
+   listening=false;recognition=null;
+   clearTimeout(watchdog);watchdog=null;
+   appearance('idle');notify('Не удалось запустить голосовой ввод: '+e.message);
+  }
  }
- async function startNative(){
-  if(!window.mpolNativeSpeech)return startBrowserRecognition();
-  active=true;const seq=++sequence;
-  status('Слушаю… Произнесите команду в микрофон.','listening');
+ async function nativeStart(){
+  const seq=++sequence;listening=true;
+  appearance('listening');
   let result;
   try{result=await window.mpolNativeSpeech.recognize()}
-  catch(e){result={ok:false,code:'unavailable',message:String(e?.message||e)}}
-  if(seq!==sequence||!open)return;
-  active=false;
-  if(result?.ok&&result.text){
-   await processTranscript(result.text,seq);
-   return;
-  }
-  status(result?.message||'Распознавание Windows недоступно. Введите команду текстом.');
-  if(browserSpeechAvailable&&result?.code!=='cancelled'){
-   ui.browser.classList.remove('hidden');
-  }
+  catch(e){result={ok:false,message:'Не удалось запустить распознавание Windows: '+String(e?.message||e)}}
+  if(seq!==sequence||!opened)return;
+  listening=false;
+  if(result?.ok&&result.text){await heard(result.text,seq);return}
+  appearance('idle');
+  if(result?.code==='cancelled')return;
+  notify(result?.message||'Голосовой ввод в Windows недоступен. Проверьте микрофон.');
  }
- ui.toggle.onclick=()=>setOpen(!open);
- ui.close.onclick=()=>setOpen(false);
- ui.listen.onclick=()=>{
-  if(active){stopListening();return}
-  clearChoices();showHeard('');
-  startNative();
+ launcher.onclick=()=>show(!opened);
+ button.onclick=()=>{
+  if(busy)return;
+  if(listening){abort();return}
+  if(!app()?.isReady?.())return notify('Войдите в MPOL для голосовых команд.');
+  if(window.mpolNativeSpeech)nativeStart();
+  else browserStart();
  };
- ui.browser.onclick=()=>{
-  // Browser implementations can send audio to the browser provider.
-  ui.browser.classList.add('hidden');startBrowserRecognition();
- };
- ui.form.onsubmit=e=>{
-  e.preventDefault();
-  if(active)stopListening();
-  submitCommand(ui.input.value).catch(err=>status(err.message||'Ошибка команды'));
- };
- ui.panel.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){e.preventDefault();setOpen(false);ui.toggle.focus()}
+ panel.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){e.preventDefault();show(false)}
  });
- document.addEventListener('visibilitychange',()=>{if(document.hidden&&active)stopListening()});
- window.mpolAssistantClose=()=>setOpen(false);
+ document.addEventListener('visibilitychange',()=>{
+  if(document.hidden&&listening)abort();
+ });
+ window.mpolAssistantClose=()=>show(false);
 })();
