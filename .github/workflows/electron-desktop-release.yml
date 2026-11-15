@@ -57,6 +57,40 @@ jobs:
           }
           Pop-Location
 
+      - name: Set up Python for private offline Russian speech
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build and diagnose bundled Vosk Russian voice engine
+        run: |
+          python -m pip install --disable-pip-version-check vosk==0.3.45 sounddevice==0.5.2 pyinstaller==6.14.2
+          if ($LASTEXITCODE -ne 0) { throw "Voice engine Python dependencies failed" }
+          $zip = Join-Path $env:RUNNER_TEMP "vosk-model-small-ru-0.22.zip"
+          $url = "https://huggingface.co/rhasspy/vosk-models/resolve/e7ac2109d134b5f2404ba95389b2fb51916d4cab/ru/vosk-model-small-ru-0.22.zip"
+          curl.exe -fLsS --retry 4 --retry-delay 3 -o $zip $url
+          if ($LASTEXITCODE -ne 0) { throw "Offline Russian model download failed" }
+          $digest = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($digest -ne "961d5ff98a17f4aa6de69864d0aa71fa5bac682301d2b5d17a3f24c5c99a46d4") {
+            throw "Offline model checksum mismatch"
+          }
+          New-Item -ItemType Directory -Path desktop/speech-bundle -Force | Out-Null
+          Expand-Archive -Path $zip -DestinationPath desktop/speech-bundle -Force
+          $model = (Resolve-Path "desktop/speech-bundle/vosk-model-small-ru-0.22").Path
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/mpol-pyinstaller" -Force | Out-Null
+          python -m py_compile desktop/native/mpol_speech.py
+          if ($LASTEXITCODE -ne 0) { throw "Offline speech worker syntax invalid" }
+          python -m PyInstaller --noconfirm --clean --onedir --console --name mpol-speech --collect-all vosk --collect-all sounddevice --distpath desktop/speech-bundle --workpath "$env:RUNNER_TEMP/mpol-pyinstaller" --specpath "$env:RUNNER_TEMP/mpol-pyinstaller" desktop/native/mpol_speech.py
+          if ($LASTEXITCODE -ne 0) { throw "Offline Russian voice worker packaging failed" }
+          $worker = (Resolve-Path "desktop/speech-bundle/mpol-speech/mpol-speech.exe").Path
+          $output = & $worker --model $model --diagnose
+          if ($LASTEXITCODE -ne 0) { throw "Voice engine diagnostic failed" }
+          $status = ($output | Select-Object -Last 1 | ConvertFrom-Json)
+          if ($status.ok -ne $true -or $status.engine -ne "vosk-ru-offline") {
+            throw "Offline voice engine did not load model: $output"
+          }
+          Write-Host "Offline Russian voice engine and model loaded successfully"
+
       - name: Verify shared MPOL icons and application icon
         run: |
           $icons = @("messages.webp", "friends.webp", "requests.webp", "search.webp")
@@ -106,13 +140,23 @@ jobs:
             if ($target -eq $installed.FullName) { $good = $true; break }
           }
           if (!$good) { throw "Start Menu MPOL shortcut missing or points to temporary NSIS extraction" }
+          $speechDir = Join-Path (Split-Path $installed.FullName -Parent) "resources/speech"
+          $workerExe = Join-Path $speechDir "mpol-speech/mpol-speech.exe"
+          $modelDir = Join-Path $speechDir "vosk-model-small-ru-0.22"
+          if (!(Test-Path $workerExe) -or !(Test-Path $modelDir)) {
+            throw "Installer did not copy offline Russian speech engine and model"
+          }
+          $diagnostic = & $workerExe --model $modelDir --diagnose | Select-Object -Last 1 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $diagnostic.ok -ne $true) {
+            throw "Installed offline Russian speech engine failed self-diagnostic"
+          }
           Write-Host "Permanent installation verified: $($installed.FullName)"
 
 
       - name: Upload EXE as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MPOL-Messenger-Electron-3.7.0-x64
+          name: MPOL-Messenger-Electron-3.7.1-x64
           path: |
             desktop/dist/MpolMessengerSetup.exe
             desktop/dist/MpolMessenger.exe
@@ -123,10 +167,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v3.7.0-desktop"
+          $tag = "v3.7.1-desktop"
           $assets = @("desktop/dist/MpolMessengerSetup.exe","desktop/dist/MpolMessenger.exe")
-          $title = "MPOL Messenger Desktop 3.7.0 — Voice Assistant and Smart Social Commands"
-          $notes = "MPOL 3.7.0 Windows x64: a graphite voice assistant button with small animated microphone orb and a text command fallback, locally installed Russian Windows speech recognition where supported, friend/username matching, authenticated nickname search, real chat/call/group actions. Calls require confirmation, group creation opens the existing form. No new API keys. Server-side interface must also be deployed to use new features; upcoming voice servers remain a separate next-stage feature."
+          $title = "MPOL Messenger Desktop 3.7.1 — One-Button Voice Assistant Fix"
+          $notes = "MPOL 3.7.1 Windows x64: compact single round voice assistant button only, with no text fields/examples, improved recognition and state transitions, bundled local Vosk Russian offline speech recognition model and worker. No API keys, no voice upload by the offline desktop engine. Browser HTML speech still requires supported browser and may use browser-provider speech services. Accounts, chats, calling and groups unchanged."
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY

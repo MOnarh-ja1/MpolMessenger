@@ -116,27 +116,12 @@
     </div>
   </div>
 </section>
-<aside id="assistantPanel" class="mpol-assistant-panel hidden" role="dialog" aria-modal="false" aria-label="Голосовой помощник MPOL" tabindex="-1">
-  <div class="mpol-assistant-head">
-    <div><span class="mpol-assistant-eyebrow">MPOL · ПОМОЩНИК</span><strong>Голосовые команды</strong></div>
-    <button type="button" id="assistantClose" class="mpol-assistant-close" title="Закрыть помощника" aria-label="Закрыть помощника">×</button>
-  </div>
-  <div class="mpol-assistant-orb-zone">
-    <div class="mpol-assistant-orb" id="assistantOrb" data-state="idle" aria-hidden="true">
-      <span class="mpol-assistant-orb-inner"><svg width="42" height="42" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></span>
-      <span class="mpol-assistant-pulse p1"></span><span class="mpol-assistant-pulse p2"></span>
-    </div>
-  </div>
-  <p id="assistantStatus" class="mpol-assistant-status" role="status" aria-live="polite">Нажмите «Говорить» или введите команду.</p>
-  <div id="assistantHeard" class="mpol-assistant-heard hidden" aria-live="polite"></div>
-  <button id="assistantListen" type="button" class="mpol-assistant-listen">🎙 Говорить</button>
-  <button id="assistantBrowserSpeech" type="button" class="mpol-assistant-alt hidden">Попробовать распознавание браузера</button>
-  <form id="assistantCommandForm" class="mpol-assistant-form">
-    <input id="assistantCommand" type="text" maxlength="160" placeholder="Открой чат с Nows" autocomplete="off" aria-label="Команда помощнику">
-    <button type="submit" title="Выполнить команду" aria-label="Выполнить команду">↗</button>
-  </form>
-  <div id="assistantChoices" class="mpol-assistant-choices hidden"></div>
-  <p class="mpol-assistant-hint">Примеры: «Открой чат с Nows», «Позвони Nows», «Создай группу с Nows». Для звонка потребуется подтверждение. В браузере распознавание речи может использовать внешний сервис.</p>
+<aside id="assistantPanel" class="mpol-assistant-panel hidden" role="group" aria-label="Голосовой помощник MPOL" tabindex="-1">
+  <button type="button" id="assistantListen" class="mpol-assistant-orb" data-state="idle" aria-label="Начать голосовую команду" aria-pressed="false" title="Нажмите, чтобы говорить">
+    <svg width="43" height="43" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>
+    <span class="mpol-assistant-pulse p1" aria-hidden="true"></span><span class="mpol-assistant-pulse p2" aria-hidden="true"></span>
+  </button>
+  <span id="assistantStatus" class="mpol-assistant-sr-only" role="status" aria-live="polite">Нажмите на круг для голосовой команды.</span>
 </aside>
  <div id="toastZone" aria-live="polite"></div>
 <script src="/sounds.js" defer></script><script src="/voice.js" defer></script><script src="/calls.js" defer></script><script src="/app.js" defer></script><script src="/assistant-core.js" defer></script><script src="/assistant.js" defer></script><script src="/updates.js" defer></script>

@@ -3,6 +3,8 @@
    One-shot on explicit click, Russian language pack required. No cloud API key.
    No user text is ever injected into a PowerShell command. */
 const {spawn}=require('node:child_process');
+const fs=require('node:fs');
+const path=require('node:path');
 const SYSTEM_SPEECH_SCRIPT=`
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
@@ -31,7 +33,75 @@ try {
   [Console]::WriteLine('{"ok":false,"code":"device","message":"Распознавание речи Windows недоступно. Проверьте микрофон и языковой пакет."}')
 }
 `;
-function startNativeRecognition({platform=process.platform,spawnProcess=spawn}={}){
+// A packaged Vosk model works without Windows language packs or API keys.
+// System.Speech remains a last-resort fallback only for unbundled developer builds.
+function offlinePaths(root=process.resourcesPath||path.join(__dirname,'..')){
+ const base=path.join(root,'speech');
+ return {
+  worker:path.join(base,'mpol-speech','mpol-speech.exe'),
+  model:path.join(base,'vosk-model-small-ru-0.22')
+ };
+}
+function startOfflineRecognition({platform=process.platform,spawnProcess=spawn,
+  workerPath,modelPath,timeoutMs=21000}={}){
+ if(platform!=='win32')return {promise:Promise.resolve({
+  ok:false,code:'platform',message:'Локальное распознавание доступно на Windows.'
+ }),cancel(){}};
+ const paths=offlinePaths();
+ const binary=workerPath||paths.worker,model=modelPath||paths.model;
+ if(!fs.existsSync(binary)||!fs.existsSync(model))return {promise:Promise.resolve({
+  ok:false,code:'missing-model',
+  message:'Русский речевой модуль отсутствует в приложении. Переустановите MPOL Messenger.'
+ }),cancel(){}};
+ let child=null,done=false,timer=null,complete=()=>{};
+ const promise=new Promise(resolve=>{
+  complete=value=>{if(done)return;done=true;if(timer)clearTimeout(timer);resolve(value)};
+  try{
+   child=spawnProcess(binary,['--model',model,'--max-seconds','9'],{
+    windowsHide:true,stdio:['ignore','pipe','pipe']
+   });
+  }catch(e){
+   complete({ok:false,code:'engine',message:'Не удалось запустить голосовой модуль MPOL.'});
+   return;
+  }
+  const buffers=[];let bytes=0;
+  child.stdout?.on('data',chunk=>{
+   const b=Buffer.from(chunk);bytes+=b.length;
+   if(bytes<=16000)buffers.push(b);
+  });
+  child.stderr?.on('data',()=>{});
+  child.on('error',()=>complete({ok:false,code:'engine',message:'Ошибка запуска голосового модуля MPOL.'}));
+  child.on('close',()=>{
+   if(done)return;
+   const output=Buffer.concat(buffers).toString('utf8').trim();
+   const last=output.split(/\r?\n/).filter(Boolean).pop()||'';
+   let result;try{result=JSON.parse(last)}catch{}
+   if(result?.ok && typeof result.text==='string' && result.text.trim()){
+    complete({ok:true,text:result.text.trim().slice(0,160),engine:'offline'});
+   }else if(result?.ok===false){
+    complete({ok:false,code:String(result.code||'engine'),
+     message:String(result.message||'Не удалось распознать голос.').slice(0,260)});
+   }else complete({ok:false,code:'engine',message:'Голосовой модуль не вернул распознанную команду.'});
+  });
+  timer=setTimeout(()=>{
+   try{child?.kill()}catch{}
+   complete({ok:false,code:'timeout',message:'Время голосовой команды истекло.'});
+  },timeoutMs);
+ });
+ return {promise,cancel(){
+  try{child?.kill()}catch{}
+  complete({ok:false,code:'cancelled',message:'Прослушивание остановлено.'});
+ }};
+}
+function startNativeRecognition(options={}){
+ const locations=offlinePaths();
+ const worker=options.workerPath??locations.worker;
+ const model=options.modelPath??locations.model;
+ if(fs.existsSync(worker)&&fs.existsSync(model))
+  return startOfflineRecognition({...options,workerPath:worker,modelPath:model});
+ return startSystemSpeechRecognition(options);
+}
+function startSystemSpeechRecognition({platform=process.platform,spawnProcess=spawn}={}){
  if(platform!=='win32')return {promise:Promise.resolve({
   ok:false,code:'platform',message:'Системное распознавание доступно только в Windows.'
  }),cancel(){}};
@@ -73,4 +143,4 @@ function startNativeRecognition({platform=process.platform,spawnProcess=spawn}={
   finish({ok:false,code:'cancelled',message:'Прослушивание остановлено.'});
  }};
 }
-module.exports={startNativeRecognition};
+module.exports={startNativeRecognition,startOfflineRecognition,offlinePaths};
