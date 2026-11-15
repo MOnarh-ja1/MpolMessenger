@@ -50,8 +50,8 @@ function monitorCallQuality(){
 async function restartCallIce(c){
  if(currentCall!==c||!c.pc||!c.isCaller)return;
  if(c.pc.signalingState!=='stable')return;
- if(c.restarts>=3){$call('callQuality').textContent='Не удаётся восстановить связь. Для некоторых сетей нужен TURN-сервер.';return}
- if(c.lastRestart&&Date.now()-c.lastRestart<10000)return;
+ if(c.restarts>=5){$call('callQuality').textContent='Не удаётся восстановить связь. Для некоторых сетей нужен TURN-сервер.';return}
+ if(c.lastRestart&&Date.now()-c.lastRestart<15000)return;
  c.restarts=(c.restarts||0)+1;c.lastRestart=Date.now();
  try{
   c.pc.restartIce();
@@ -62,11 +62,20 @@ async function restartCallIce(c){
  }catch(e){$call('callQuality').textContent='Переподключение не удалось: '+e.message}
 }
 function tryRecoverCall(c){
- if(currentCall!==c||!c.pc||c.pc.connectionState==='connected')return;
- if(c.isCaller)restartCallIce(c);
- else if(!c.lastRestart||Date.now()-c.lastRestart>12000){
-  c.lastRestart=Date.now();signalCall('restart',{});
- }
+ if(currentCall!==c||!c.pc||c.pc.connectionState==='connected'||
+    ['connected','completed'].includes(c.pc.iceConnectionState))return;
+ // Do not renegotiate for short Wi-Fi / mobile handovers: ICE can recover itself.
+ if(c.recoveryTimer)return;
+ const failed=c.pc.connectionState==='failed'||c.pc.iceConnectionState==='failed';
+ c.recoveryTimer=setTimeout(()=>{
+  c.recoveryTimer=null;
+  if(currentCall!==c||!c.pc||c.pc.connectionState==='connected'||
+     ['connected','completed'].includes(c.pc.iceConnectionState))return;
+  if(c.isCaller)restartCallIce(c);
+  else if(!c.lastRestart||Date.now()-c.lastRestart>15000){
+   c.lastRestart=Date.now();signalCall('restart',{});
+  }
+ },failed?1200:6500);
 }
 function prepareCallAudioFromGesture(){
  // Safari may require a user gesture to unlock remote audio playback.
@@ -149,7 +158,7 @@ async function recoverMicrophone(){
  }catch(e){toast('Микрофон недоступен: '+e.message)}
  finally{c.recovering=false}
 }
-const MPOL_FALLBACK_ICE=[{urls:'stun:stun.l.google.com:19302'}];
+const MPOL_FALLBACK_ICE=[{urls:['stun:stun.cloudflare.com:3478','stun:stun.l.google.com:19302']}];
 // Short-lived TURN credentials come from the authenticated server, not static JS.
 async function loadCallIce(call){
  let config=null;
@@ -193,7 +202,12 @@ function updateCallButtons(c){
  speaker.title=silent?'Включить звук собеседника':'Выключить звук собеседника';
  speaker.setAttribute('aria-label',speaker.title);
  const cameraOn=!!c?.stream?.getVideoTracks().some(t=>t.enabled);
- camera.disabled=c?.mode!=='video'||!c?.stream?.getVideoTracks().length;
+ camera.disabled=c?.mode!=='video';
+ const share=$call('shareScreen');
+ share.disabled=c?.mode!=='video'||!c?.pc||!navigator.mediaDevices?.getDisplayMedia;
+ share.setAttribute('aria-pressed',String(!!c?.screen));
+ share.title=c?.screen?'Остановить демонстрацию экрана':
+  share.disabled?'Дождитесь подключения для демонстрации':'Демонстрировать экран или окно';
  camera.setAttribute('aria-pressed',String(c?.mode==='video'&&!cameraOn));
  camera.title=c?.mode!=='video'?
   'Камера доступна только в видеозвонке':
@@ -203,7 +217,10 @@ function updateCallButtons(c){
 function markCallConnected(c){
  if(currentCall!==c)return;
  if(c.connectWatchdog){clearTimeout(c.connectWatchdog);c.connectWatchdog=null}
+ if(c.recoveryTimer){clearTimeout(c.recoveryTimer);c.recoveryTimer=null}
+ c.restarts=0;
  playIncomingCallAudio(c);
+ updateCallButtons(c);
  if(c.started)return;
  c.started=Date.now();stopCallRingtone();
  setCallVisualStage('connected');
@@ -216,6 +233,7 @@ function callLayout(){
  const c=currentCall;if(!c)return;
  $call('callLayer').classList.remove('hidden');
  $call('callLayer').classList.toggle('audio-only',c.mode!=='video');
+ $call('videoArea').classList.remove('has-remote-video');
  const stage=c.incoming?'incoming':c.started?'connected':'outgoing';
  setCallVisualStage(stage);
  $call('callTitle').textContent=c.incoming?
@@ -238,8 +256,15 @@ async function getLocalCallMedia(mode){
  const video=mode==='video'?{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:24,max:30}}:false;
  try{return await navigator.mediaDevices.getUserMedia({audio:callAudioConstraints(),video})}
  catch(e){
-  if(mode!=='audio'||!['OverconstrainedError','NotFoundError','TypeError','NotReadableError'].includes(e.name))throw e;
-  return navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true},video:false});
+  const recoverable=['OverconstrainedError','NotFoundError','NotAllowedError','TypeError','NotReadableError','AbortError'];
+  if(!recoverable.includes(e.name))throw e;
+  // Camera access may fail independently of audio; keep video reception and
+  // screen sharing available by reserving a recv/send video transceiver.
+  const audio=await navigator.mediaDevices.getUserMedia({
+   audio:{echoCancellation:true,noiseSuppression:callNoiseEnabled},video:false
+  });
+  if(mode==='video')toast('Камера недоступна. Звук подключён; можно включить камеру позже или показать экран.');
+  return audio;
  }
 }
 async function beginCall(mode){
@@ -264,6 +289,9 @@ function createPeer(){
   iceCandidatePoolSize:0,iceTransportPolicy:'all'});
  c.pc=pc;
  c.remoteStream=new MediaStream();
+ if(c.mode==='video'&&!c.stream.getVideoTracks().length){
+  pc.addTransceiver('video',{direction:'sendrecv'});
+ }
  for(const t of c.stream.getTracks()){
   const sender=pc.addTrack(t,c.stream);
   if(t.kind==='audio')t.onended=()=>{if(currentCall===c)recoverMicrophone()};
@@ -303,6 +331,14 @@ function createPeer(){
    // Video is silent: the audio element is the only playback path.
    video.muted=true;
    video.play().catch(()=>{});
+   if(e.track.kind==='video'){
+    const area=$call('videoArea');
+    const showVideo=()=>{if(currentCall===c && !e.track.muted)area.classList.add('has-remote-video')};
+    e.track.onunmute=()=>{showVideo();video.play().catch(()=>{})};
+    e.track.onmute=()=>{if(currentCall===c)area.classList.remove('has-remote-video')};
+    video.onplaying=()=>{if(currentCall===c)area.classList.add('has-remote-video')};
+    showVideo();
+   }
   }
   if(e.track.kind==='audio'){
    e.track.onmute=()=>{if(currentCall===c)$call('callQuality').textContent='Входящий микрофон временно недоступен'};
@@ -320,7 +356,7 @@ function createPeer(){
    markCallConnected(c)
   }else if(pc.connectionState==='disconnected'){
    $call('callStatus').textContent='Восстанавливаем соединение…';
-   setTimeout(()=>tryRecoverCall(c),3500);
+   tryRecoverCall(c);
   }else if(pc.connectionState==='failed'){
    $call('callStatus').textContent='Сеть потеряна — восстанавливаем…';
    $call('callQuality').textContent=c.relayConfigured?'Проверяем соединение через TURN/STUN…':'Для этой сети может потребоваться TURN-сервер';
@@ -336,9 +372,10 @@ function createPeer(){
    playIncomingCallAudio(c);
    markCallConnected(c);
   }else if(ice==='failed')tryRecoverCall(c);
-  else if(ice==='disconnected')setTimeout(()=>tryRecoverCall(c),4000);
+  else if(ice==='disconnected')tryRecoverCall(c);
  };
  startCallWatchdog(c);
+ updateCallButtons(c);
  return pc;
 }
 async function applyQueuedIce(){
@@ -402,10 +439,12 @@ function endCall(notify=true){
  if(callQualityTick){clearInterval(callQualityTick);callQualityTick=null}
  if(c.timeout)clearTimeout(c.timeout);
  if(c.connectWatchdog)clearTimeout(c.connectWatchdog);
+ if(c.recoveryTimer)clearTimeout(c.recoveryTimer);
  try{c.pc?.close()}catch{}
  for(const track of c.stream?.getTracks()||[])track.stop();
  for(const track of c.screen?.getTracks()||[])track.stop();
  $call('localVideo').srcObject=null;$call('remoteVideo').srcObject=null;$call('remoteAudio').srcObject=null;
+ $call('videoArea').classList.remove('has-remote-video');
  $call('callLayer').classList.add('hidden');
 }
 function toggleCallMic(){
@@ -424,26 +463,59 @@ function toggleCallSpeaker(){
  }
  updateCallButtons(c);
 }
-function toggleCallCamera(){
+async function toggleCallCamera(){
  const c=currentCall;if(!c?.stream||c.mode!=='video')return;
- const tracks=c.stream.getVideoTracks();const enabled=!tracks.some(t=>t.enabled);
- tracks.forEach(track=>{track.enabled=enabled});
- updateCallButtons(c);
+ const tracks=c.stream.getVideoTracks();
+ if(tracks.length){
+  const enabled=!tracks.some(t=>t.enabled);
+  tracks.forEach(track=>{track.enabled=enabled});
+  updateCallButtons(c);
+  return;
+ }
+ try{
+  const fresh=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+  if(currentCall!==c){fresh.getTracks().forEach(t=>t.stop());return}
+  const camera=fresh.getVideoTracks()[0];
+  if(!camera)throw Error('Камера не найдена');
+  c.stream.addTrack(camera);
+  const sender=c.pc?.getSenders().find(s=>s.track?.kind==='video')||
+   c.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
+  if(sender&&!c.screen)await sender.replaceTrack(camera);
+  $call('localVideo').srcObject=c.stream;
+  updateCallButtons(c);
+ }catch(e){toast('Не удалось включить камеру: '+e.message)}
 }
 async function shareCallScreen(){
- const c=currentCall;if(!c?.pc||c.mode!=='video')return;
+ const c=currentCall;if(!c||c.mode!=='video')return;
+ if(!c.pc)return toast('Дождитесь ответа собеседника, затем включите демонстрацию.');
+ const sender=c.pc.getSenders().find(s=>s.track?.kind==='video')||
+  c.pc.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
+ if(!sender)return toast('Видеоканал ещё не готов.');
+ if(c.screen){
+  c.screen.getTracks().forEach(t=>t.stop());return;
+ }
  try{
+  // getDisplayMedia must be called directly from the button click (user gesture).
   const share=await navigator.mediaDevices.getDisplayMedia({video:true,audio:false});
-  const track=share.getVideoTracks()[0];const sender=c.pc.getSenders().find(s=>s.track?.kind==='video');
-  if(!sender){share.getTracks().forEach(t=>t.stop());return toast('Видеодорожка недоступна')}
-  await sender.replaceTrack(track);c.screen=share;$call('localVideo').srcObject=share;
-  $call('shareScreen').textContent='Экран показывается';
+  const track=share.getVideoTracks()[0];
+  if(!track)throw Error('Не выбран экран');
+  if(currentCall!==c){share.getTracks().forEach(t=>t.stop());return}
+  await sender.replaceTrack(track);
+  c.screen=share;
+  $call('localVideo').srcObject=share;
+  updateCallButtons(c);
+  toast('Демонстрация экрана включена');
   track.onended=async()=>{
-   if(currentCall!==c)return;
-   const camera=c.stream.getVideoTracks()[0];if(camera)await sender.replaceTrack(camera);
-   $call('localVideo').srcObject=c.stream;$call('shareScreen').textContent='Экран';c.screen=null
+   if(currentCall!==c||c.screen!==share)return;
+   c.screen=null;
+   try{await sender.replaceTrack(c.stream.getVideoTracks()[0]||null)}catch{}
+   $call('localVideo').srcObject=c.stream.getVideoTracks().length?c.stream:null;
+   updateCallButtons(c);
   };
- }catch(e){if(e.name!=='NotAllowedError')toast('Экран недоступен: '+e.message)}
+ }catch(e){
+  if(!['NotAllowedError','AbortError'].includes(e.name))
+   toast('Экран недоступен: '+e.message);
+ }
 }
 $call('voiceCall').onclick=()=>beginCall('audio');
 $call('videoCall').onclick=()=>beginCall('video');
