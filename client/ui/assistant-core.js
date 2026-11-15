@@ -57,8 +57,8 @@
    .slice(0,8);
  }
  const patterns={
-  call:['позвони','позвонить','позванить','пазвони','набери','набрать','звони','звонить','вызови','вызвать'],
-  open_chat:['открой','открыть','открывай','покажи','показать','найди','найти','перейди','зайди','переключи','напиши','написать'],
+  call:['позвони','позвонить','позванить','пазвони','набери','набрать','звони','звонить','вызови','вызвать','перезвони'],
+  open_chat:['открой','открыть','открывай','открою','покажи','показать','найди','найти','перейди','зайди','переключи','напиши','написать','откройте'],
   group:['создай','создать','сделай','сделать','организуй','организовать'],
   profile:['профиль','профиля','профилю','профил','страницу','страница'],
   video:['видео','видеозвонок','видеовызов','видеосвязь','видезвонок','видеозванок','видеоразговор','камерой','камеру']
@@ -102,7 +102,7 @@
   const actionIdx=words.findIndex(w=>inWords(w,patterns.open_chat));
   const profileIdx=words.findIndex(w=>inWords(w,patterns.profile));
   const groupNoun=words.findIndex(w=>/^(?:группу|группы|группа|групповой|групповойчат|беседу|беседа)$/.test(w));
-  const chatNoun=words.findIndex(w=>/^(?:чат|чаты|чата|диалог|диалоге|диалогом|переписку|переписка|сообщения|сообщение)$/.test(w));
+  const chatNoun=words.findIndex(w=>/^(?:чат|чад|чать|чатик|чаты|чата|диалог|диалоге|диалогом|переписку|переписка|перепеску|разговор|разговора|сообщения|сообщение)$/.test(w));
   const targetNoun=words.findIndex(w=>/^(?:друзья|друзей|друзьями|контакты|контактов)$/.test(w));
   const isDirectTab=(words.length<=5 &&
     (targetNoun>=0 || /^(?:чаты|сообщения|переписки|группы)$/.test(words.at(-1))) &&
@@ -125,10 +125,27 @@
   }
   if(videoIdx>=0&&(callIdx>=0 || /звон|вызов|связ/.test(words[videoIdx]) ||
    /^(?:запусти|начни|сделай|организуй|включи)$/.test(words[0]))){
-   // Video calling via "позвони по видео ...", "видеозвонок с ..."
-   const after=Math.max(videoIdx,callIdx)+1;
-   const target=targetOf(words,after);
+   // "Сделай видео звонок" is two words; remove the second video noun.
+   let after=Math.max(videoIdx,callIdx)+1;
+   if(words[after]&&/^(?:звонок|званок|вызов|разговор)$/.test(words[after]))after++;
+   let target=targetOf(words,after);
+   // "Позвони Ноуc по видео": target precedes the video qualifier.
+   if(!target&&callIdx>=0&&videoIdx>callIdx){
+    target=targetOf(words.slice(0,videoIdx).filter(w=>w!=='по'),callIdx+1);
+   }
    return target?{kind:'video_call',target}:{kind:'missing',action:'video_call'};
+  }
+  // Some recognizers split the word "видеозвонок" into "видео звонок".
+  if(videoIdx>=0&&callIdx<0&&
+   words[videoIdx+1]&&/^(?:звонок|званок|вызов|разговор)$/.test(words[videoIdx+1])){
+   const target=targetOf(words,videoIdx+2);
+   return target?{kind:'video_call',target}:{kind:'missing',action:'video_call'};
+  }
+  if(callIdx<0&&(words.includes('звонок')||words.includes('вызов'))&&
+   /^(?:начни|сделай|запусти|организуй|включи|давай)$/.test(words[0])){
+   const nounIdx=words.findIndex(w=>w==='звонок'||w==='вызов');
+   const target=targetOf(words,nounIdx+1);
+   return target?{kind:'call',target}:{kind:'missing',action:'call'};
   }
   // "Позвони другу Nows", "Набери Nows", "Звони по видео Nows".
   if(callIdx>=0){
