@@ -231,5 +231,5 @@
   if(e.key==='Escape'){e.preventDefault();setOpen(false);ui.toggle.focus()}
  });
  document.addEventListener('visibilitychange',()=>{if(document.hidden&&active)stopListening()});
- window.addEventListener('mpol:signed-out',()=>setOpen(false));
+ window.mpolAssistantClose=()=>setOpen(false);
 })();
