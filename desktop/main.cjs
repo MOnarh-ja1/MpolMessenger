@@ -6,7 +6,7 @@ const { pathToFileURL } = require('node:url');
 const { SERVER_ORIGIN, normalizeServerOrigin, isMpolUrl, canOpenExternal,
   safeFilename, normalizeMediaTypes } = require('./lib/security.cjs');
 
-const APP_VERSION = '3.3.0';
+const APP_VERSION = '3.4.0';
 const { offerDesktopUpdate } = require('./lib/updater.cjs');
 let activeServerOrigin=SERVER_ORIGIN;
 const isTrustedUrl=url=>isMpolUrl(url,activeServerOrigin);
