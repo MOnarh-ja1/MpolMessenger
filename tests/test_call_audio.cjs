@@ -8,8 +8,12 @@ const elements=new Map();
 function element(id){
  if(!elements.has(id)){
   let stream=null,assignments=0;
+  const attributes={};
   elements.set(id,{id,textContent:'',className:'',checked:false,muted:false,volume:1,
-   style:{},classList:{add(){},remove(){},toggle(){}},play:()=>Promise.resolve(),
+   style:{},dataset:{},disabled:false,
+   setAttribute(k,v){attributes[k]=String(v)},
+   getAttribute(k){return attributes[k]||null},
+   classList:{add(){},remove(){},toggle(){}},play:()=>Promise.resolve(),
    get srcObject(){return stream},set srcObject(value){assignments++;stream=value},
    get srcAssignments(){return assignments}});
  }
@@ -68,11 +72,31 @@ assert.equal(typeof pc.oniceconnectionstatechange,'function',
  'Mobile WebRTC must recover when ICE changes without connectionState event');
 pc.iceConnectionState='connected';
 pc.oniceconnectionstatechange();
+assert.equal(element('callCard').dataset.stage,'connected',
+ 'WebRTC connection must switch from connecting animation to connected call UI');
+assert.equal(element('callCard').dataset.mode,'video');
+assert.equal(element('callTitle').textContent,'Видеосвязь');
 assert.equal(element('callStatus').textContent,'Соединено');
 assert.equal(element('remoteAudio').muted,false,'Remote audio must be audible');
 pc.ontrack({track:{id:'in-video',kind:'video'},streams:[]});
 assert.equal(audio.srcAssignments,1);
 assert.equal(video.srcAssignments,1);
+// New glossy call buttons must not destroy their SVG icons by assigning textContent.
+const callButtons=['muteMic','toggleSpeaker','toggleCamera'];
+const labelsBefore=callButtons.map(id=>element(id).textContent);
+vm.runInContext('toggleCallMic()',ctx);
+assert.equal(element('muteMic').getAttribute('aria-pressed'),'false');
+vm.runInContext('toggleCallSpeaker()',ctx);
+assert.equal(element('remoteAudio').muted,true,'Speaker mute must silence remote WebRTC audio only');
+assert.equal(element('toggleSpeaker').getAttribute('aria-pressed'),'true');
+assert.equal(vm.runInContext('currentCall.speakerMuted',ctx),true);
+vm.runInContext('toggleCallSpeaker()',ctx);
+assert.equal(element('remoteAudio').muted,false);
+assert.equal(element('toggleSpeaker').getAttribute('aria-pressed'),'false');
+vm.runInContext('toggleCallCamera()',ctx);
+assert.equal(element('toggleCamera').getAttribute('aria-pressed'),'false');
+assert.deepEqual(callButtons.map(id=>element(id).textContent),labelsBefore,
+ 'Changing the call state must not overwrite button SVGs');
 console.log('PASS: call audio remains single-output, mobile ICE connection recovery and HD bitrate');
 
 (async()=>{
