@@ -94,7 +94,7 @@
   if(/^(?:помощь|помоги|справка|что ты умеешь|команды|какие команды)$/.test(s))
    return {kind:'help'};
   const words=s.split(' ');
-  if(/^(?:создай|создать|сделай|открой|открыть|зайди)\s+(?:голосовой\s+)?(?:сервер|канал|комнату|серверы)\b/.test(s))
+  if(/^(?:создай|создать|сделай|открой|открыть|зайди)\s+(?:голосовой\s+)?(?:сервер|канал|комнату|серверы)(?=\s|$)/.test(s))
    return {kind:'future'};
   const videoIdx=words.findIndex(w=>inWords(w,patterns.video));
   const callIdx=words.findIndex(w=>inWords(w,patterns.call));
@@ -168,7 +168,7 @@
     return target?{kind:'open_chat',target}:{kind:'missing',action:'open_chat'};
    }
   }
-  if(/^(?:найди|найти|ищи|поиск|поищи)\b/.test(s)){
+  if(/^(?:найди|найти|ищи|поиск|поищи)(?=\s|$)/.test(s)){
    const target=targetOf(words,1);
    return target?{kind:'find',target}:{kind:'missing',action:'find'};
   }
