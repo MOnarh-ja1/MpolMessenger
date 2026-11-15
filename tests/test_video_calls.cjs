@@ -7,6 +7,9 @@ const html=fs.readFileSync('client/ui/index.html','utf8');
 const css=fs.readFileSync('client/ui/style.css','utf8');
 assert.match(html,/id="videoArea"/);
 assert.match(html,/id="shareScreen"[^>]*call-tool-button/);
+assert.match(html,/id="stopShareScreen"/);
+assert.match(html,/id="mirrorCamera"/);
+assert.match(html,/id="switchCamera"/);
 assert.equal((html.match(/id="shareScreen"/g)||[]).length,1,'Screen share has one visible toolbar control');
 assert.match(css,/not\(\[data-stage="incoming"\]\) \.call-video-area/);
 
@@ -60,6 +63,7 @@ class FakePC{
  getTransceivers(){return this.transceivers}
 }
 const audio=new FakeStream([new FakeTrack('audio','mic')]);
+let cameraAllowed=false;
 const camera=new FakeTrack('video','camera');
 const screen=new FakeTrack('video','screen');
 const ctx=vm.createContext({
@@ -68,7 +72,7 @@ const ctx=vm.createContext({
  navigator:{mediaDevices:{
   async getUserMedia(c){
    if(c.video===false)return audio;
-   if(c.video===true)return new FakeStream([camera]);
+   if((c.video===true||typeof c.video==='object')&&cameraAllowed)return new FakeStream([camera]);
    const error=new Error('Camera absent');error.name='NotFoundError';throw error;
   },
   async getDisplayMedia(){return new FakeStream([screen])}
@@ -92,10 +96,17 @@ vm.runInContext(code,ctx);
  await vm.runInContext('shareCallScreen()',ctx);
  await Promise.resolve();await Promise.resolve();
  assert.equal(videoSender.track,null,'Stopping share restores video sender without camera');
+ assert.equal(el('stopShareScreen').classList.contains('hidden'),true,'Stop button hides after screen stops');
+ assert.equal(el('localVideo').srcObject,null,'Screen preview must stop after clicking stop');
  assert.equal(el('shareScreen').getAttribute('aria-pressed'),'false');
+ cameraAllowed=true;
  await vm.runInContext('toggleCallCamera()',ctx);
  assert.equal(videoSender.track,camera,'Late camera should replace reserved video sender');
  assert.equal(el('localVideo').srcObject,stream);
+ vm.runInContext('mirrorCallCamera()',ctx);
+ assert.equal(el('localVideo').classList.contains('camera-mirrored'),true);
+ vm.runInContext('mirrorCallCamera()',ctx);
+ assert.equal(el('localVideo').classList.contains('camera-mirrored'),false);
  const incoming=new FakeTrack('video','remote');
  incoming.muted=true;
  pc.ontrack({track:incoming});

@@ -16,3 +16,11 @@ if(location.protocol==='file:' && decodeURIComponent(location.pathname).endsWith
   settings:()=>ipcRenderer.invoke('mpol:open-settings')
  });
 }
+
+ // The main process re-checks the sender's exact HTTPS MPOL origin on every
+ // request. This bridge exposes no credentials, files, or arbitrary IPC.
+ if(location.protocol==='https:'){
+  contextBridge.exposeInMainWorld('mpolDevicePermissions',{
+   reset:()=>ipcRenderer.invoke('mpol:reset-media-permissions')
+  });
+ }

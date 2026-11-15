@@ -5,8 +5,10 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { SERVER_ORIGIN, normalizeServerOrigin, isMpolUrl, canOpenExternal,
   safeFilename, normalizeMediaTypes } = require('./lib/security.cjs');
+const {loadPermissionGrants,savePermissionGrants,hasPermission,
+  grantPermissions,revokeMediaPermissions}=require('./lib/media-permissions.cjs');
 
-const APP_VERSION = '3.5.0';
+const APP_VERSION = '3.6.0';
 const { offerDesktopUpdate } = require('./lib/updater.cjs');
 let activeServerOrigin=SERVER_ORIGIN;
 const isTrustedUrl=url=>isMpolUrl(url,activeServerOrigin);
@@ -114,23 +116,35 @@ function iconPath() {
 async function showPermissionPrompt(title, message) {
   const result = await dialog.showMessageBox(mainWindow, {
     type:'question', title, message, noLink:true,
-    detail:'Разрешение действует только внутри MPOL Messenger. Его можно сбросить после перезапуска приложения.',
+    detail:'Доступ разрешён только для выбранного HTTPS-сервера MPOL и будет сохранён. Его можно сбросить в настройках приложения.',
     buttons:['Разрешить','Запретить'], defaultId:1, cancelId:1
   });
   return result.response === 0;
 }
+const permissionFile=()=>path.join(app.getPath('userData'),'media-permissions.json');
+const rememberedPermissions=loadPermissionGrants(permissionFile());
+function storePermissionKinds(kinds){
+ grantPermissions(rememberedPermissions,activeServerOrigin,kinds);
+ savePermissionGrants(permissionFile(),rememberedPermissions);
+}
 function setupPermissions(ses) {
-  const mediaGrants = new Set();
-  let notificationsGranted = false;
+  const isGranted=kind=>hasPermission(rememberedPermissions,activeServerOrigin,kind);
+  ipcMain.handle('mpol:reset-media-permissions',event=>{
+    if(!isTrustedUrl(event.senderFrame?.url||''))throw Error('Unauthorized permission reset');
+    revokeMediaPermissions(rememberedPermissions,activeServerOrigin);
+    savePermissionGrants(permissionFile(),rememberedPermissions);
+    return {ok:true};
+  });
   ses.setPermissionCheckHandler((_wc, permission, origin, details) => {
     const verified = isTrustedUrl(details?.requestingUrl || origin);
     if (!verified) return false;
-    if (permission === 'notifications') return notificationsGranted;
+    if (permission === 'notifications') return isGranted('notifications');
     // Copying user-selected text is allowed only on our verified HTTPS origin.
     if (permission === 'clipboard-sanitized-write'||permission === 'clipboard-write') return true;
     if (permission === 'media') {
-      const type = details?.mediaType;
-      return (type === 'audio' || type === 'video') && mediaGrants.has(type);
+      const types=normalizeMediaTypes(details?.mediaTypes);
+      if(!types.length&&['audio','video'].includes(details?.mediaType))types.push(details.mediaType);
+      return types.length>0 && types.every(isGranted);
     }
     // The separate screen/window picker below still requires explicit consent.
     if (permission === 'display-capture') return true;
@@ -144,23 +158,23 @@ function setupPermissions(ses) {
       callback(true); return;
     }
     if (permission === 'notifications') {
-      if (notificationsGranted) {callback(true);return;}
+      if (isGranted('notifications')) {callback(true);return;}
       showPermissionPrompt('Уведомления MPOL',
         'Разрешить уведомления о новых сообщениях и звонках в Windows?')
-        .then(yes => {notificationsGranted = yes; callback(yes);})
+        .then(yes => {if(yes)storePermissionKinds(['notifications']);callback(yes);})
         .catch(() => callback(false));
       return;
     }
     if (permission === 'media') {
       const types = normalizeMediaTypes(details?.mediaTypes);
       if (!types.length) {callback(false);return;}
-      if (types.every(t => mediaGrants.has(t))) {callback(true);return;}
+      if (types.every(isGranted)) {callback(true);return;}
       const label = types.includes('video') ?
         (types.includes('audio') ? 'камере и микрофону' : 'камере') : 'микрофону';
       showPermissionPrompt('Доступ к устройствам MPOL',
         'Разрешить MPOL Messenger доступ к ' + label + '?\nИспользуется только при звонке или записи.')
         .then(yes => {
-          if (yes) types.forEach(t => mediaGrants.add(t));
+          if(yes)storePermissionKinds(types);
           callback(yes);
         }).catch(() => callback(false));
       return;

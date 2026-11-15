@@ -41,6 +41,8 @@ jobs:
           node tests/test_client_account_ownership.cjs
           node tests/test_call_audio.cjs
           node tests/test_video_calls.cjs
+          node --check client/ui/sounds.js
+          node tests/test_sounds.cjs
 
       - name: Browser layout smoke test (Microsoft Edge / Chrome)
         shell: pwsh
@@ -86,8 +88,8 @@ jobs:
             MpolMessenger_Full_Project.zip
           if-no-files-found: error
 
-      - name: Publish beta release
-        if: github.event_name == 'push'
+      - name: Publish legacy Go beta release (manual only)
+        if: github.event_name == 'workflow_dispatch'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
