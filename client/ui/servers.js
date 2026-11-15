@@ -9,6 +9,33 @@
  let spaces=[],current=null,selectedId='',voice=null,loadSeq=0;
  const api=(p,opts)=>a().api(p,opts);
  const fail=e=>a().toast(a().errorText(e));
+ let lastError='';
+ function explain(e){
+  const msg=a().errorText(e);
+  if(/HTTP\s+404|Not Found|404/i.test(msg))
+   return 'На выбранном сервере MPOL нет поддержки игровых серверов. Обновите сервер до 3.8 или проверьте адрес в настройках EXE.';
+  if(/HTTP\s+401|401/i.test(msg))
+   return 'Сессия MPOL устарела. Войдите в аккаунт снова.';
+  if(/HTTP\s+403|403/i.test(msg))
+   return 'У вас нет разрешения на это действие. Проверьте роль на сервере.';
+  if(/HTTP\s+5\d\d|502|503|504/i.test(msg))
+   return 'Сервис MPOL временно недоступен. Данные сервера сохраняются; повторите позже.';
+  return msg;
+ }
+ function displayError(e){
+  lastError=explain(e);
+  if(a().state.tab==='servers'){
+   showDashboard();
+   const target=el('serverOverview');
+   target.innerHTML='<div class="server-empty server-error"><h2>Не удалось открыть серверы</h2>'+
+    '<p>'+html(lastError)+'</p><small>Подключено: '+html(location.host)+'</small>'+
+    '<button id="serverRetry" class="button">Повторить подключение</button>'+
+    (typeof isDesktopClient!=='undefined'&&isDesktopClient?'<button id="serverOpenConfig" class="button outlined">Настроить сервер</button>':'')+'</div>';
+   el('serverRetry').onclick=()=>reload().catch(displayError);
+   el('serverOpenConfig')?.addEventListener('click',()=>{location.href='mpol://settings'});
+  }
+  a().toast(lastError);
+ }
  const permitted=role=>current&&rank[current.role]>=rank[role];
  function wsSend(data){
   const ws=a().state.ws;
@@ -16,7 +43,7 @@
   ws.send(JSON.stringify(data));return true;
  }
  async function reload(){
-  const list=await api('/servers');spaces=Array.isArray(list)?list:[];
+  const list=await api('/servers');lastError='';spaces=Array.isArray(list)?list:[];
   renderList(el('listSearch')?.value?.toLowerCase()||'');
   if(selectedId&&!spaces.some(x=>x.id===selectedId)){
    selectedId='';current=null;await leaveVoice();
@@ -42,30 +69,36 @@
  function showDashboard(){
   el('openedChat').classList.add('hidden');el('emptyChat').classList.add('hidden');
   el('serverDashboard').classList.remove('hidden');
+  // When Windows DPI scaling creates a narrow CSS viewport, the original
+  // mobile layout hid .conversation completely. Keep the server pane visible.
   el('mainScreen').classList.remove('mobile-chat-open');
+  el('mainScreen').classList.add('server-pane-open');
  }
  async function select(id){
   if(!id)return;
-  selectedId=id;const seq=++loadSeq;
+  selectedId=id;current=null;const seq=++loadSeq;
   showDashboard();renderList(el('listSearch')?.value?.toLowerCase()||'');
   try{
    const detail=await api('/servers/'+encodeURIComponent(id));
    if(seq!==loadSeq||selectedId!==id)return;
    current=detail;render();
-  }catch(e){fail(e)}
+  }catch(e){displayError(e)}
  }
- function openTab(){showDashboard();render();reload().catch(fail)}
+ function openTab(){showDashboard();render();reload().catch(displayError)}
  function createServer(){
   a().modal('Создать сервер','<label>Название сервера<input id="newServerName" maxlength="72" placeholder="Моя команда"></label>'+
    '<label>Описание<input id="newServerDesc" maxlength="260" placeholder="Играем вместе"></label>'+
    '<label>Значок<input id="newServerIcon" maxlength="5" value="◈"></label>'+
    '<button class="button" id="newServerSave">Создать сервер</button>');
   el('newServerSave').onclick=async()=>{
+   const save=el('newServerSave');if(save.disabled)return;
+   save.disabled=true;
    try{
     const s=await api('/servers',{method:'POST',body:{name:el('newServerName').value.trim(),
      description:el('newServerDesc').value.trim(),icon:el('newServerIcon').value.trim()||'◈'}});
     a().closeModal();await reload();await select(s.id);
-   }catch(e){fail(e)}
+    a().toast('Сервер «'+s.name+'» создан');
+   }catch(e){const button=el('newServerSave');if(button)button.disabled=false;displayError(e)}
   };
  }
  function editServer(){
@@ -139,7 +172,10 @@
   }
   const c=current;
   const text=c.channels.filter(x=>x.kind==='text'),rooms=c.channels.filter(x=>x.kind==='voice');
-  box.innerHTML='<header class="server-overview-header">'+
+  box.innerHTML='<div class="server-quicknav"><select id="serverSwitch" aria-label="Выбрать сервер">'+
+   spaces.map(s=>'<option value="'+html(s.id)+'" '+(s.id===selectedId?'selected':'')+'>'+html(s.name)+'</option>').join('')+
+   '</select><button type="button" id="serverQuickCreate">+ Сервер</button></div>'+
+   '<header class="server-overview-header">'+
    '<div class="server-cover">'+html(c.icon||'◈')+'</div><div class="server-heading">'+
    '<small>MPOL · СЕРВЕРА</small><h2>'+html(c.name)+'</h2><p>'+html(c.description||'Игровое сообщество')+
    '</p></div><div class="server-header-actions">'+
@@ -159,6 +195,8 @@
     '<span class="server-dot '+(m.online?'online':'')+'"></span></button>').join('')+
    (c.role!=='owner'?'<button id="serverLeave" class="server-leave">Покинуть сервер</button>':'')+
    '</section></div>';
+  el('serverSwitch')?.addEventListener('change',event=>select(event.target.value).catch(displayError));
+  el('serverQuickCreate')?.addEventListener('click',createServer);
   el('serverInvite')?.addEventListener('click',invite);
   el('serverSettings')?.addEventListener('click',editServer);
   el('serverPlusRoom')?.addEventListener('click',createChannel);

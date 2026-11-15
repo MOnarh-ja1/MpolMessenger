@@ -856,6 +856,23 @@ button.mpol-assistant-orb[data-state="working"] svg{animation:mpol-thinking 1.3s
 }
 
 
+/* Servers on narrow Electron viewports (Windows high-DPI scaling). */
+@media(max-width:600px){
+ .app.server-pane-open .conversation{display:block!important;grid-column:1;grid-row:1;min-height:0;overflow:hidden}
+ .app.server-pane-open .chat-list-panel{display:none!important}
+ .app.server-pane-open .rail{display:flex!important;grid-column:1;grid-row:2}
+ .app.server-pane-open{grid-template-rows:minmax(0,1fr) 68px!important}
+}
+.server-quicknav{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.server-quicknav select{min-width:0;max-width:330px;flex:1;background:#262830;color:#f2f3f6;
+ border:1px solid #565b67;border-radius:10px;padding:9px 11px;font-size:12px}
+.server-quicknav button{padding:10px 12px;background:#383c47;border:1px solid #687080;
+ color:#f2f3f7;border-radius:10px;font-size:12px;white-space:nowrap}
+.server-quicknav button:hover{background:#4b5160}
+.server-error{border:1px solid #6c4b52;border-radius:18px;background:#231d21;margin-top:30px}
+.server-error small{font-size:11px;color:#a1a4ae;overflow-wrap:anywhere}
+@media(max-width:600px){.server-quicknav{gap:5px}.server-quicknav button{padding:10px 8px}}
+
 /* MPOL 3.8 — matching graphite Servers glyph, rooms and community dashboard. */
 .rail-btn.mpol-servers-launch{display:grid;place-items:center;color:#c9d0de;
  background:linear-gradient(145deg,#272b33,#0d1016);

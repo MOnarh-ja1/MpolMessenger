@@ -59,6 +59,9 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright-core
           node tests/test_layout.cjs
+          if ($LASTEXITCODE -ne 0) { throw "Desktop layout smoke test failed" }
+          node tests/test_servers_browser.cjs
+          if ($LASTEXITCODE -ne 0) { throw "Server UI interaction test failed" }
           node tests/test_auth_persistence.cjs
 
       - name: Set up Python for server tests
