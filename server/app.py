@@ -327,8 +327,10 @@ def ice_configuration(u: User = Depends(authed)):
         # Documented, public shared TURN REST auth credential; NOT private data.
         # No Metered account or VPS is needed, but public relays can reach their
         # shared 20GB/month quota, be unavailable, or change provider policy.
-        urls = ['turn:staticauth.openrelay.metered.ca:80?transport=udp',
-                'turn:staticauth.openrelay.metered.ca:443?transport=tcp',
+        urls = ['turn:staticauth.openrelay.metered.ca:443?transport=tcp',
+                'turn:staticauth.openrelay.metered.ca:80?transport=tcp',
+                'turn:staticauth.openrelay.metered.ca:443?transport=udp',
+                'turn:staticauth.openrelay.metered.ca:80?transport=udp',
                 'turns:staticauth.openrelay.metered.ca:443?transport=tcp']
         secret = 'openrelayprojectsecret'
         provider = 'metered-openrelay-public'
