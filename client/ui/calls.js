@@ -2,6 +2,7 @@
 /* MPOL call control. Browser WebRTC with permission-on-demand and authenticated
    WebSocket signaling. TURN-enabled ICE configuration fetched from the authenticated server. */
 let currentCall=null;
+let callSignalQueue=Promise.resolve();
 let callTick=null;
 let callSoundInterval=null,callAudioContext=null;
 let preferredVideoMirror=localStorage.getItem('mpol_video_mirror')==='1';
@@ -51,11 +52,14 @@ function monitorCallQuality(){
 async function restartCallIce(c){
  if(currentCall!==c||!c.pc||!c.isCaller)return;
  if(c.pc.signalingState!=='stable')return;
- if(c.restarts>=5){$call('callQuality').textContent='Не удаётся восстановить связь. Для некоторых сетей нужен TURN-сервер.';return}
+ if(c.restarts>=5){$call('callQuality').textContent='Не удаётся восстановить связь. Проверьте TURN и сеть.';return}
  if(c.lastRestart&&Date.now()-c.lastRestart<15000)return;
  c.restarts=(c.restarts||0)+1;c.lastRestart=Date.now();
  try{
-  c.pc.restartIce();
+  if(c.restarts>=2&&c.relayConfigured){
+   c.pc.setConfiguration({...c.pc.getConfiguration(),iceTransportPolicy:'relay'});
+  }
+  if(typeof c.pc.restartIce==='function')c.pc.restartIce();
   const offer=await c.pc.createOffer({iceRestart:true});
   await c.pc.setLocalDescription(offer);
   signalCall('offer',{sdp:c.pc.localDescription.toJSON()});
@@ -63,7 +67,7 @@ async function restartCallIce(c){
  }catch(e){$call('callQuality').textContent='Переподключение не удалось: '+e.message}
 }
 function tryRecoverCall(c){
- if(currentCall!==c||!c.pc||c.pc.connectionState==='connected'||
+ if(currentCall!==c||!c.pc||c.pc.connectionState==='connected'||c.restarts>=5||
     ['connected','completed'].includes(c.pc.iceConnectionState))return;
  // Do not renegotiate for short Wi-Fi / mobile handovers: ICE can recover itself.
  if(c.recoveryTimer)return;
@@ -76,7 +80,8 @@ function tryRecoverCall(c){
   else if(!c.lastRestart||Date.now()-c.lastRestart>15000){
    c.lastRestart=Date.now();signalCall('restart',{});
   }
- },failed?1200:6500);
+   if(currentCall===c)tryRecoverCall(c);
+ },failed?4000:6500);
 }
 function prepareCallAudioFromGesture(){
  // Safari may require a user gesture to unlock remote audio playback.
@@ -226,7 +231,9 @@ function markCallConnected(c){
  c.restarts=0;
  playIncomingCallAudio(c);
  updateCallButtons(c);
+ $call('callStatus').textContent='Соединено';
  if(c.started)return;
+ if(c.timeout){clearTimeout(c.timeout);c.timeout=null;}
  c.started=Date.now();stopCallRingtone();
  setCallVisualStage('connected');
  $call('callTitle').textContent=c.mode==='video'?'Видеосвязь':'На связи';
@@ -396,16 +403,24 @@ async function acceptIncomingCall(){
  const c=currentCall;if(!c||!c.incoming)return;
  prepareCallAudioFromGesture();
  try{
-  c.stream=await getLocalCallMedia(c.mode);c.incoming=false;stopCallRingtone();
+  if(c.accepting)return;
+  c.accepting=true;
+  const stream=await getLocalCallMedia(c.mode);
+  if(currentCall!==c){stream.getTracks().forEach(t=>t.stop());return}
+  c.stream=stream;c.incoming=false;stopCallRingtone();
   callLayout();$call('callStatus').textContent='Подключаемся…';
   $call('localVideo').srcObject=c.stream;
   $call('localVideo').classList.toggle('hidden',!c.stream.getVideoTracks().length);
   $call('localVideo').play().catch(()=>{});
-  if(!await loadCallIce(c)){endCall(false);return}
+  if(!await loadCallIce(c)){return}
+  if(currentCall!==c)return;
   createPeer();if(!signalCall('accept'))endCall(false);
  }catch(e){toast('Микрофон/камера не разрешены: '+e.message);signalCall('decline');endCall(false)}
 }
-async function onCallSignal(m){
+function onCallSignal(m){
+ callSignalQueue=callSignalQueue.then(()=>handleCallSignal(m)).catch(e=>console.warn('MPOL signaling:',e));
+}
+async function handleCallSignal(m){
  const kind=m.kind,from=m.from_id,id=m.call_id;
  if(kind==='invite'){
   if(currentCall){if(state.ws?.readyState===WebSocket.OPEN)state.ws.send(JSON.stringify({type:'call_signal',to:from,call_id:id,kind:'busy'}));return}
@@ -423,7 +438,9 @@ async function onCallSignal(m){
  try{
   if(['decline','busy','hangup','unavailable'].includes(kind)){toast(kind==='unavailable'?'Собеседник сейчас не в сети. Для звонка ему нужно открыть MPOL.':kind==='busy'?'Собеседник занят':kind==='decline'?'Вызов отклонён':'Звонок завершён');endCall(false);return}
   if(kind==='restart'){if(c.isCaller)await restartCallIce(c);return}
-  if(kind==='accept'&&!c.incoming){
+  if(kind==='accept'&&!c.incoming&&!c.pc){
+   if(c.timeout){clearTimeout(c.timeout);c.timeout=null;}
+   c.timeout=setTimeout(()=>{if(currentCall===c&&!c.started){toast('Не удалось установить медиасоединение');endCall(true)}},120000);
    const pc=createPeer();const offer=await pc.createOffer();await pc.setLocalDescription(offer);
    signalCall('offer',{sdp:pc.localDescription.toJSON()});$call('callStatus').textContent='Устанавливаем соединение…';return
   }
@@ -434,7 +451,7 @@ async function onCallSignal(m){
   }
   if(kind==='answer'&&c.pc){await c.pc.setRemoteDescription(m.payload.sdp);await applyQueuedIce();return}
   if(kind==='ice'&&m.payload?.candidate){
-   if(c.pc?.remoteDescription)await c.pc.addIceCandidate(m.payload.candidate);
+   if(c.pc?.remoteDescription){try{await c.pc.addIceCandidate(m.payload.candidate)}catch(e){console.warn('MPOL ICE candidate rejected:',e.message)}}
    else c.ice.push(m.payload.candidate);
   }
  }catch(e){toast('Ошибка соединения: '+e.message);endCall(true)}
